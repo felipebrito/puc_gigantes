@@ -35,30 +35,42 @@ function Dinosaur() {
 
 function Visitor({ id, imageUrl, removeVisitor }) {
   const ref = useRef();
-  const speed = useRef(2 + Math.random() * 2); // Random speed
-  const [wobbleOffset] = useState(Math.random() * 100);
+
+  // Random configurations on mount
+  const config = useMemo(() => {
+    const direction = Math.random() > 0.5 ? 1 : -1; // 1 = Left to Right, -1 = Right to Left
+    return {
+      direction,
+      speed: (2 + Math.random() * 3) * direction, // Random Speed between 2-5
+      startX: -20 * direction, // Start off-screen
+      z: -5 + Math.random() * 10, // Depth variation (-5 to 5)
+      wobbleOffset: Math.random() * 100,
+      scale: 1.5 + Math.random() * 1 // Random size
+    };
+  }, []);
 
   useFrame((state, delta) => {
     if (!ref.current) return;
 
-    // Move right
-    ref.current.position.x += speed.current * delta;
+    // Move
+    ref.current.position.x += config.speed * delta;
 
     // Bobbing "walking" effect
     const t = state.clock.getElapsedTime();
-    ref.current.position.y = 1 + Math.abs(Math.sin(t * 10 + wobbleOffset)) * 0.5;
+    ref.current.position.y = 1 + Math.abs(Math.sin(t * 10 + config.wobbleOffset)) * 0.5;
 
-    // Remove if out of bounds
-    if (ref.current.position.x > 15) {
-      removeVisitor(id);
+    // Remove if out of bounds (direction dependent)
+    if ((config.direction === 1 && ref.current.position.x > 20) ||
+      (config.direction === -1 && ref.current.position.x < -20)) {
+      removeVisitor(id); // Recycle this visitor (removed from state, will be re-added by main loop)
     }
   });
 
   return (
-    <Billboard position={[-15, 1, 0]} ref={ref}>
+    <Billboard position={[config.startX, 1, config.z]} ref={ref}>
       <Image
         url={imageUrl}
-        scale={[2, 2, 1]}
+        scale={[config.scale, config.scale, 1]}
         transparent
         opacity={1}
       />
@@ -102,9 +114,59 @@ function Scene() {
     };
   }, []);
 
+  /* Auto-Spawn Logic */
+  const historicalPhotos = useRef([]);
+  const MAX_VISITORS = 15;
+
+  // 1. Fetch old photos on mount
+  useEffect(() => {
+    fetch(window.location.hostname === 'localhost'
+      ? 'https://localhost:3000/visitors'
+      : `https://${window.location.hostname}:3000/visitors`)
+      .then(res => res.json())
+      .then(files => {
+        historicalPhotos.current = files;
+        console.log("Loaded historical photos:", files.length);
+      })
+      .catch(err => console.error("Failed to load history", err));
+  }, []);
+
+  // 2. Random Spawner Loop
+  useFrame((state) => {
+    // Only spawn if below limit and we have photos
+    if (visitors.length < MAX_VISITORS && historicalPhotos.current.length > 0) {
+      // Small chance to spawn per frame (approx every 1-2 seconds)
+      if (Math.random() < 0.02) {
+        const randomPhoto = historicalPhotos.current[Math.floor(Math.random() * historicalPhotos.current.length)];
+        const newVisitor = {
+          id: Date.now() + Math.random(),
+          imageUrl: randomPhoto
+        };
+        setVisitors(prev => [...prev, newVisitor]);
+      }
+    }
+  });
+
   const removeVisitor = (id) => {
     setVisitors(prev => prev.filter(v => v.id !== id));
   };
+
+  // Update historical list when new visitor arrives via socket
+  useEffect(() => {
+    const handleNewVisitor = (data) => {
+      console.log("New Visitor Live!", data);
+      setLastLog(`Novo: ${data.id}`);
+
+      // Add to screen immediately
+      setVisitors(prev => [...prev, data]);
+
+      // Add to rotation list
+      historicalPhotos.current.push(data.imageUrl);
+    };
+
+    socket.on('new_visitor', handleNewVisitor);
+    return () => socket.off('new_visitor', handleNewVisitor);
+  }, []);
 
   return (
     <>
