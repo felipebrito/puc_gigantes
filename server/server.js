@@ -1,5 +1,5 @@
 const express = require('express');
-const http = require('http');
+const https = require('https');
 const { Server } = require("socket.io");
 const multer = require('multer');
 const path = require('path');
@@ -7,7 +7,12 @@ const fs = require('fs');
 const cors = require('cors');
 
 const app = express();
-const server = http.createServer(app);
+
+// Load Certs
+const key = fs.readFileSync('server.key');
+const cert = fs.readFileSync('server.cert');
+const server = https.createServer({ key, cert }, app);
+
 const io = new Server(server, {
   cors: {
     origin: "*", // Allow all origins for local LAN access
@@ -22,8 +27,8 @@ app.use(express.json());
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'public', 'uploads');
-if (!fs.existsSync(uploadDir)){
-    fs.mkdirSync(uploadDir, { recursive: true });
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 // Multer Setup for Image Uploads
@@ -57,7 +62,7 @@ app.post('/upload', upload.single('photo'), (req, res) => {
   // Broadcast to Projection Clients
   io.emit('new_visitor', {
     id: Date.now(),
-    imageUrl: `http://${req.headers.host}${fileUrl}` // Full URL for ease
+    imageUrl: `https://${req.headers.host}${fileUrl}` // Full URL for ease
   });
 
   res.json({ success: true, url: fileUrl });
@@ -75,5 +80,6 @@ io.on('connection', (socket) => {
 // Start Server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`listening on *:${PORT}`);
+  // console.log(`listening on *:${PORT}`);
+  require('./print-ip');
 });

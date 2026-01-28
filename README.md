@@ -29,7 +29,8 @@ cd server
 npm install
 node server.js
 ```
-*   O servidor rodará em `http://localhost:3000`.
+*   **Importante**: O servidor mostrará o **IP da Rede** (ex: `https://192.168.1.5:3000`). Anote esse IP.
+*   Acesse esse link no celular para testar a conexão. O navegador dará alerta de "Sua conexão não é particular" (Self-signed cert). Clique em **Avançado -> Ir para Site (Inseguro)**.
 
 ### 2. Iniciar a Projeção (Tela Grande)
 ```bash
@@ -37,7 +38,7 @@ cd projection
 npm install
 npm run dev -- --host
 ```
-*   Acesse pelo browser em `http://localhost:5174` (ou IP da rede).
+*   Acesse `https://localhost:5174` (PC) ou via IP. Aceite o certificado inseguro.
 
 ### 3. Iniciar o Photo Booth (Tablet/Celular)
 ```bash
@@ -45,10 +46,14 @@ cd booth
 npm install
 npm run dev -- --host
 ```
-*   Acesse pelo browser em `http://localhost:5173` (ou IP da rede).
+*   No celular, acesse `https://IP-DO-SEU-PC:5173`.
+*   **Aceite o Certificado**: Como estamos usando HTTPS local, o Chrome/Safari vai reclamar. Clique em "Visitar site mesmo assim".
+*   **Camera**: O navegador pedirá permissão de câmera. Aceite.
 
-## 🛠 Configuração de IP
-Se estiver rodando em máquinas diferentes, edite o arquivo `App.jsx` dentro de `booth/src` e `projection/src` para apontar para o IP correto do computador que está rodando o servidor (ex: substituir `localhost` por `192.168.0.X`).
+## 🛠 Troubleshooting Mobile
+*   **Permissão de Câmera**: Só funciona em HTTPS ou Localhost. Por isso configuramos tudo para HTTPS.
+*   **Erro de Certificado**: É normal. Certificados locais não são assinados por autoridades globais.
+*   **Conexão**: Certifique-se que o celular e o PC estão na **mesma rede Wi-Fi**.
 
 ## 📦 Estrutura de Pastas
 *   `/server`: Backend Node.js.

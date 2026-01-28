@@ -7,8 +7,8 @@ import './App.css';
 
 // Socket connection
 const socket = io(window.location.hostname === 'localhost'
-  ? 'http://localhost:3000'
-  : `http://${window.location.hostname}:3000`);
+  ? 'https://localhost:3000'
+  : `https://${window.location.hostname}:3000`);
 
 // --- Components ---
 
@@ -68,16 +68,38 @@ function Visitor({ id, imageUrl, removeVisitor }) {
 
 function Scene() {
   const [visitors, setVisitors] = useState([]);
+  const [connected, setConnected] = useState(false);
+  const [lastLog, setLastLog] = useState("Aguardando...");
 
   useEffect(() => {
-    socket.on('connect', () => console.log("Connected to server"));
+    socket.on('connect', () => {
+      console.log("Connected");
+      setConnected(true);
+      setLastLog("Conectado");
+    });
+    socket.on('disconnect', () => {
+      setConnected(false);
+      setLastLog("Desconectado");
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error("Connection Error:", err);
+      setConnected(false);
+      setLastLog(`Erro: ${err.message}`);
+    });
 
     socket.on('new_visitor', (data) => {
       console.log("New Visitor!", data);
+      setLastLog(`Visitante: ${data.id}`);
       setVisitors(prev => [...prev, data]);
     });
 
-    return () => socket.off('new_visitor');
+    return () => {
+      socket.off('new_visitor');
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('connect_error');
+    };
   }, []);
 
   const removeVisitor = (id) => {
@@ -97,17 +119,26 @@ function Scene() {
 
       <Dinosaur />
 
-      {visitors.map(v => (
-        <Visitor
-          key={v.id}
-          id={v.id}
-          imageUrl={v.imageUrl}
-          removeVisitor={removeVisitor}
-        />
-      ))}
+      <React.Suspense fallback={null}>
+        {visitors.map(v => (
+          <Visitor
+            key={v.id}
+            id={v.id}
+            imageUrl={v.imageUrl}
+            removeVisitor={removeVisitor}
+          />
+        ))}
+      </React.Suspense>
 
       <OrbitControls />
       <gridHelper args={[100, 100]} />
+
+      {/* Debug UI */}
+      <group position={[0, 0, 0]}>
+        <Text position={[-5, 5, 0]} fontSize={0.3} color={connected ? "green" : "red"}>
+          Status: {connected ? "ON" : "OFF"} | {lastLog}
+        </Text>
+      </group>
     </>
   );
 }

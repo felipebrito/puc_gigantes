@@ -5,8 +5,8 @@ import './BoothApp.css';
 
 // Server URL - Update this if running on a different machine
 const SERVER_URL = window.location.hostname === 'localhost'
-  ? 'http://localhost:3000'
-  : `http://${window.location.hostname}:3000`;
+  ? 'https://localhost:3000'
+  : `https://${window.location.hostname}:3000`;
 
 function App() {
   const webcamRef = useRef(null);
@@ -15,6 +15,14 @@ function App() {
   const [countdown, setCountdown] = useState(3);
   const [flash, setFlash] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [serverOnline, setServerOnline] = useState(true);
+
+  // Check connection on load
+  React.useEffect(() => {
+    fetch(SERVER_URL)
+      .then(() => setServerOnline(true))
+      .catch(() => setServerOnline(false));
+  }, []);
 
   // Capture functionality
   const startCapture = () => {
@@ -73,7 +81,7 @@ function App() {
       setImgSrc(null); // Reset for next person
     } catch (error) {
       console.error("Upload failed", error);
-      alert("Erro ao enviar. Verifique a conexão com o servidor.");
+      alert(`Erro ao enviar: ${error.message}\n\nDICA: Você acessou https://${window.location.hostname}:3000 no celular e aceitou o certificado?`);
     } finally {
       setUploading(false);
     }
@@ -82,6 +90,18 @@ function App() {
   return (
     <div className="booth-container">
       <h1 className="title">Dinossauros POA</h1>
+
+      {!serverOnline && (
+        <div style={{ background: 'orange', color: 'black', padding: '10px', marginBottom: '20px', borderRadius: '8px' }}>
+          ⚠️ Conexão insegura bloqueada!
+          <br />
+          <a href={SERVER_URL} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 'bold' }}>
+            CLIQUE AQUI e aceite o certificado (Avançado -&gt; Ir para...)
+          </a>
+          <br />
+          Depois recarregue esta página.
+        </div>
+      )}
 
       <div className="camera-wrapper">
         {imgSrc ? (
