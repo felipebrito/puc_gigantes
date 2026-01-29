@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
+import * as faceapi from 'face-api.js';
 import './BoothApp.css';
 
 // Server URL - Update this if running on a different machine
@@ -15,6 +16,9 @@ function App() {
   const [countdown, setCountdown] = useState(3);
   const [flash, setFlash] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(true);
+  const [faceFeedback, setFaceFeedback] = useState("Carregando IA...");
+  const [isFaceValid, setIsFaceValid] = useState(false);
   const [serverOnline, setServerOnline] = useState(true);
 
   // Check connection on load
@@ -22,7 +26,117 @@ function App() {
     fetch(SERVER_URL)
       .then(() => setServerOnline(true))
       .catch(() => setServerOnline(false));
+
+    // Load Face API Models
+    const loadModels = async () => {
+      try {
+        console.log("Loading FaceAPI Models...");
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+          faceapi.nets.faceExpressionNet.loadFromUri('/models')
+        ]);
+        console.log("FaceAPI Models Loaded Successfully");
+        setLoadingModels(false);
+        setFaceFeedback("Posicione seu rosto");
+      } catch (e) {
+        console.error("Error loading models", e);
+        setFaceFeedback("Erro ao carregar IA");
+        // Try to continue anyway? No, validation won't work.
+      }
+    };
+    loadModels();
   }, []);
+
+  // Face Detection Loop
+  React.useEffect(() => {
+    if (loadingModels || countingDown || imgSrc) return;
+
+    const interval = setInterval(async () => {
+      if (webcamRef.current && webcamRef.current.video && webcamRef.current.video.readyState === 4) {
+        const video = webcamRef.current.video;
+
+        // Detect face
+        let detection;
+        try {
+          // Options: inputSize=512 for better accuracy (default 416), scoreThreshold=0.3 to be more lenient
+          const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 });
+
+          // Try with expressions
+          detection = await faceapi.detectSingleFace(video, options).withFaceExpressions();
+        } catch (err) {
+          console.warn("Detection error, retrying without expressions", err);
+          try {
+            // Fallback: Just detect face
+            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 });
+            detection = await faceapi.detectSingleFace(video, options);
+          } catch (err2) {
+            console.error("Detection totally failed", err2);
+            return;
+          }
+        }
+
+        if (!detection) {
+          setFaceFeedback("Rosto não encontrado");
+          setIsFaceValid(false);
+          return;
+        }
+
+        // Safe Access & Debugging
+        // detecSingleFace().withFaceExpressions() returns Check: { detection: FaceDetection, expressions: ... }
+        // OR standard FaceDetection extended.
+        const box = detection.box || (detection.detection && detection.detection.box);
+
+        if (!box) {
+          console.warn("Detection object has no box:", detection);
+          setFaceFeedback("Erro na detecção");
+          setIsFaceValid(false);
+          return;
+        }
+
+        const { x, y, width, height } = box;
+        const videoW = video.videoWidth;
+        const videoH = video.videoHeight;
+
+        const centerX = x + width / 2;
+        const centerY = y + height / 2;
+
+        // Check centering (relative to video center)
+        // Video center is videoW / 2
+        // We want face to be in the center horizontally
+        const isCenteredX = Math.abs(centerX - videoW / 2) < videoW * 0.15; // 15% tolerance
+
+        // Check size (User must be close enough)
+        // Face width should be at least 20% of video width?
+        const isCloseEnough = width > videoW * 0.2;
+
+        // Check vertical position (Should not be too low or too high?)
+        // Let's rely mostly on simple presence + size for "validation" to avoid being annoying.
+
+        if (!isCloseEnough) {
+          setFaceFeedback("Aproxime-se mais");
+          setIsFaceValid(false);
+        } else if (!isCenteredX) {
+          setFaceFeedback("Centralize o rosto");
+          setIsFaceValid(false);
+        } else {
+          setFaceFeedback("Perfeito! Sorria!");
+          setIsFaceValid(true);
+
+          // Smile Trigger
+          if (detection.expressions && detection.expressions.happy > 0.7) {
+            setFaceFeedback("Sorriso detectado! 📸");
+            // Debounce / Trigger
+            if (!countingDown && !imgSrc) {
+              startCapture();
+            }
+          }
+        }
+
+      }
+    }, 200); // Check every 200ms
+
+    return () => clearInterval(interval);
+  }, [loadingModels, countingDown, imgSrc]);
 
   // Capture functionality
   const startCapture = () => {
@@ -42,16 +156,16 @@ function App() {
   };
 
   const triggerCapture = useCallback(() => {
+    // 1. Get raw screenshot
     const imageSrc = webcamRef.current.getScreenshot();
 
-    // flash effect
+    // Flash effect
     setFlash(true);
     setTimeout(() => setFlash(false), 200);
-    setTimeout(() => {
-      setImgSrc(imageSrc);
-      setCountingDown(false);
-    }, 300);
 
+    // Show raw image immediately
+    setImgSrc(imageSrc);
+    setCountingDown(false);
   }, [webcamRef]);
 
   const retake = () => {
@@ -60,31 +174,48 @@ function App() {
 
   const sendPhoto = async () => {
     if (!imgSrc) return;
-    setUploading(true);
 
-    try {
-      // Convert base64 to blob
-      const res = await fetch(imgSrc);
-      const blob = await res.blob();
-      const file = new File([blob], "visitor.jpg", { type: "image/jpeg" });
+    // 1. Immediate Success Feedback to User
+    const rawImageToProcess = imgSrc; // Capture current image
+    setImgSrc(null); // Reset UI for next person immediately
+    alert("Enviado! Sua foto aparecerá em breve.");
 
-      const formData = new FormData();
-      formData.append('photo', file);
+    // 2. Background Processing (Fire and Forget from UI perspective)
+    (async () => {
+      try {
+        console.log("Starting background processing...");
 
-      await axios.post(`${SERVER_URL}/upload`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
+        // Dynamic import
+        const { removeBackground } = await import('@imgly/background-removal');
+
+        // Remove Background
+        let blob;
+        try {
+          blob = await removeBackground(rawImageToProcess, {
+            model: 'small', // Use small model for speed
+            progress: (key, current, total) => { /* quiet */ }
+          });
+        } catch (bgError) {
+          console.error("BG Removal failed, uploading raw", bgError);
+          const res = await fetch(rawImageToProcess);
+          blob = await res.blob();
         }
-      });
 
-      alert("Enviado para a pré-história!");
-      setImgSrc(null); // Reset for next person
-    } catch (error) {
-      console.error("Upload failed", error);
-      alert(`Erro ao enviar: ${error.message}\n\nDICA: Você acessou https://${window.location.hostname}:3000 no celular e aceitou o certificado?`);
-    } finally {
-      setUploading(false);
-    }
+        // Upload
+        const file = new File([blob], "visitor.png", { type: "image/png" });
+        const formData = new FormData();
+        formData.append('photo', file);
+
+        await axios.post(`${SERVER_URL}/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        console.log("Upload completed successfully in background");
+
+      } catch (error) {
+        console.error("Background upload totally failed", error);
+        // We can't alert the user anymore as they might have walked away
+      }
+    })();
   };
 
   return (
@@ -120,12 +251,31 @@ function App() {
           />
         )}
 
+        {/* Face Feedback Overlay */}
+        {!imgSrc && !countingDown && (
+          <div className="overlay-instruction" style={{
+            color: isFaceValid ? '#4caf50' : 'white',
+            fontWeight: 'bold',
+            textShadow: '0 2px 4px rgba(0,0,0,0.8)',
+            background: 'rgba(0,0,0,0.3)',
+            padding: '5px 10px',
+            borderRadius: '5px'
+          }}>
+            {faceFeedback}
+          </div>
+        )}
+
         {countingDown && <div className="countdown">{countdown > 0 ? countdown : ''}</div>}
       </div>
 
       <div className="controls">
         {!imgSrc && !countingDown && (
-          <button className="btn" onClick={startCapture}>
+          <button
+            className="btn"
+            onClick={startCapture}
+            disabled={!isFaceValid && !loadingModels}
+            style={{ opacity: isFaceValid ? 1 : 0.5, cursor: isFaceValid ? 'pointer' : 'not-allowed' }}
+          >
             Tirar Foto
           </button>
         )}

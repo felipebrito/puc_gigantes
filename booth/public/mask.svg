@@ -1,0 +1,19 @@
+<svg width="320" height="400" viewBox="0 0 320 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dim Background -->
+  <mask id="face-hole">
+    <rect x="0" y="0" width="320" height="400" fill="white"/>
+    <!-- Cutout Head -->
+    <ellipse cx="160" cy="180" rx="90" ry="115" fill="black"/>
+    <!-- Cutout Shoulders -->
+    <ellipse cx="160" cy="480" rx="180" ry="160" fill="black"/>
+  </mask>
+  
+  <rect x="0" y="0" width="320" height="400" fill="black" fill-opacity="0.6" mask="url(#face-hole)"/>
+  
+  <!-- Dotted Outline Guide -->
+  <ellipse cx="160" cy="180" rx="90" ry="115" stroke="white" stroke-width="4" stroke-dasharray="8 8"/>
+  <ellipse cx="160" cy="480" rx="180" ry="160" stroke="white" stroke-width="4" stroke-dasharray="8 8"/>
+  
+  <!-- Text Guide -->
+  <text x="160" y="50" text-anchor="middle" fill="white" font-family="sans-serif" font-size="14" font-weight="bold" letter-spacing="1">ENCAIXE O ROSTO</text>
+</svg>

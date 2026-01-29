@@ -12,7 +12,9 @@ O sistema é composto por 3 partes principais que rodam em rede local (Offline-F
     *   Armazena as fotos na pasta `public/uploads`.
 2.  **Photo Booth (`/booth`)**: O "Totem".
     *   Web App (React + Vite) rodando em tablet/celular.
-    *   Tira a foto, recorta o rosto e envia para o servidor.
+    *   **IA de Validação**: Usa `face-api.js` localmente para garantir que o rosto esteja centralizado e visível.
+    *   **Disparo por Sorriso**: Detecta automaticamente quando o usuário sorri para tirar a foto.
+    *   Recorta o rosto (Máscara SVG) e envia para o servidor.
 3.  **Projection (`/projection`)**: A "Tela".
     *   Aplicação 3D (React Three Fiber) rodando no projetor/PC Gamer.
     *   Renderiza o cenário, o dinossauro e os visitantes caminhando.
