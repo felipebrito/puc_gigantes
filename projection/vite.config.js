@@ -10,6 +10,8 @@ export default defineConfig({
   ],
   server: {
     host: true, // Expose to network
-    https: true // Enable HTTPS
+    https: true, // Enable HTTPS
+    port: 5200,
+    strictPort: true
   }
 })

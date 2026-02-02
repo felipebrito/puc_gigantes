@@ -50,26 +50,27 @@ app.get('/', (req, res) => {
   res.send('Prehistoric Projection Server Running');
 });
 
+// List all Visitors API
+app.get('/visitors', (req, res) => {
+  console.log(`[API] Requested visitors list from: ${req.headers.origin || req.ip}`);
+  fs.readdir(uploadDir, (err, files) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to scan directory' });
+    }
+
+    const fileUrls = files
+      .filter(file => /\.(jpg|jpeg|png)$/i.test(file)) // Image filter
+      .map(file => `https://${req.headers.host}/uploads/${file}`);
+
+    res.json(fileUrls);
+  });
+});
+
 // Upload Endpoint
 app.post('/upload', upload.single('photo'), (req, res) => {
   if (!req.file) {
     return res.status(400).send('No file uploaded.');
   }
-
-  /* New Endpoint: List all Visitors */
-  app.get('/visitors', (req, res) => {
-    fs.readdir(uploadDir, (err, files) => {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to scan directory' });
-      }
-
-      const fileUrls = files
-        .filter(file => /\.(jpg|jpeg|png)$/i.test(file)) // Image filter
-        .map(file => `https://${req.headers.host}/uploads/${file}`);
-
-      res.json(fileUrls);
-    });
-  });
 
   const fileUrl = `/uploads/${req.file.filename}`;
   console.log(`[New Visitor] Uploaded: ${fileUrl}`);
