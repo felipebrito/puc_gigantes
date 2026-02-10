@@ -172,6 +172,69 @@ function App() {
     setImgSrc(null);
   };
 
+  const cropToFace = async (imageSrc) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = async () => {
+        const video = webcamRef.current.video;
+
+        // Detect face again for cropping
+        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 });
+        const detection = await faceapi.detectSingleFace(video, options);
+
+        if (!detection) {
+          // No face found, return original
+          console.warn("No face found for cropping, returning original");
+          resolve(imageSrc);
+          return;
+        }
+
+        const box = detection.box;
+        const { x, y, width, height } = box;
+
+        // Calculate crop area: 
+        // - Center on face
+        // - Include head + shoulders (expand face box)
+        // - Make it square for consistency
+        const expansionFactor = 2.0; // Include more area around face (2x the face width/height)
+        const cropSize = Math.max(width, height) * expansionFactor;
+
+        // Center crop on face center
+        const faceCenterX = x + width / 2;
+        const faceCenterY = y + height / 2;
+
+        let cropX = faceCenterX - cropSize / 2;
+        let cropY = faceCenterY - cropSize / 2;
+
+        // Ensure crop stays within image bounds
+        const imgWidth = img.width;
+        const imgHeight = img.height;
+
+        cropX = Math.max(0, Math.min(cropX, imgWidth - cropSize));
+        cropY = Math.max(0, Math.min(cropY, imgHeight - cropSize));
+
+        // Adjust if crop exceeds bounds
+        const actualCropSize = Math.min(cropSize, imgWidth - cropX, imgHeight - cropY);
+
+        // Create canvas for cropped image
+        const canvas = document.createElement('canvas');
+        canvas.width = 400; // Output size (square)
+        canvas.height = 400;
+        const ctx = canvas.getContext('2d');
+
+        // Draw cropped portion, scaled to canvas
+        ctx.drawImage(
+          img,
+          cropX, cropY, actualCropSize, actualCropSize, // Source crop
+          0, 0, 400, 400 // Destination (full canvas)
+        );
+
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = imageSrc;
+    });
+  };
+
   const sendPhoto = async () => {
     if (!imgSrc) return;
 
@@ -185,19 +248,23 @@ function App() {
       try {
         console.log("Starting background processing...");
 
+        // NEW: Crop to face FIRST
+        const croppedImage = await cropToFace(rawImageToProcess);
+        console.log("Face cropping complete");
+
         // Dynamic import
         const { removeBackground } = await import('@imgly/background-removal');
 
-        // Remove Background
+        // Remove Background from CROPPED image
         let blob;
         try {
-          blob = await removeBackground(rawImageToProcess, {
+          blob = await removeBackground(croppedImage, {
             model: 'small', // Use small model for speed
             progress: (key, current, total) => { /* quiet */ }
           });
         } catch (bgError) {
-          console.error("BG Removal failed, uploading raw", bgError);
-          const res = await fetch(rawImageToProcess);
+          console.error("BG Removal failed, uploading cropped without BG removal", bgError);
+          const res = await fetch(croppedImage);
           blob = await res.blob();
         }
 
