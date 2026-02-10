@@ -186,56 +186,111 @@ function App() {
           const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
           const pixels = imageData.data;
 
-          // Find lowest non-transparent pixel (bottom of content)
-          let bottomY = 0;
+          // Helper: Check if color is similar to reference
+          const colorDistance = (r1, g1, b1, r2, g2, b2) => {
+            return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
+          };
+
+          // Sample skin color from center-top area (forehead/face)
+          const sampleX = Math.floor(img.width / 2);
+          const sampleY = Math.floor(img.height * 0.2); // 20% from top (face area)
+
+          let skinR = 0, skinG = 0, skinB = 0;
+          let skinSamples = 0;
+
+          // Sample 20x20 area around center-top
+          for (let dy = -10; dy <= 10; dy++) {
+            for (let dx = -10; dx <= 10; dx++) {
+              const x = sampleX + dx;
+              const y = sampleY + dy;
+              if (x >= 0 && x < img.width && y >= 0 && y < img.height) {
+                const idx = (y * img.width + x) * 4;
+                const alpha = pixels[idx + 3];
+                if (alpha > 10) { // Non-transparent
+                  skinR += pixels[idx];
+                  skinG += pixels[idx + 1];
+                  skinB += pixels[idx + 2];
+                  skinSamples++;
+                }
+              }
+            }
+          }
+
+          if (skinSamples === 0) {
+            console.log("[RemoveShoulders] No skin reference found, returning original");
+            resolve(blob);
+            return;
+          }
+
+          // Average skin color
+          skinR = Math.floor(skinR / skinSamples);
+          skinG = Math.floor(skinG / skinSamples);
+          skinB = Math.floor(skinB / skinSamples);
+
+          console.log("[RemoveShoulders] Reference skin color: rgb(" + skinR + "," + skinG + "," + skinB + ")");
+
+          // Scan from bottom up, find where skin STOPS
+          let cropBottomY = img.height;
+
           for (let y = img.height - 1; y >= 0; y--) {
+            let skinPixelsInRow = 0;
+            let totalPixelsInRow = 0;
+
+            // Check horizontal line
             for (let x = 0; x < img.width; x++) {
               const idx = (y * img.width + x) * 4;
               const alpha = pixels[idx + 3];
 
-              if (alpha > 10) {
-                bottomY = y;
-                break;
+              if (alpha > 10) { // Non-transparent
+                totalPixelsInRow++;
+                const r = pixels[idx];
+                const g = pixels[idx + 1];
+                const b = pixels[idx + 2];
+
+                // Check if this pixel is skin-colored (within threshold)
+                const dist = colorDistance(r, g, b, skinR, skinG, skinB);
+                if (dist < 80) { // Threshold for skin similarity
+                  skinPixelsInRow++;
+                }
               }
             }
-            if (bottomY > 0) break;
+
+            // If less than 40% of row is skin-colored, we've hit clothing/non-skin
+            if (totalPixelsInRow > 0 && (skinPixelsInRow / totalPixelsInRow) < 0.4) {
+              cropBottomY = y;
+              console.log("[RemoveShoulders] Skin boundary detected at Y:", y,
+                "skin%:", Math.floor((skinPixelsInRow / totalPixelsInRow) * 100));
+              break;
+            }
           }
 
-          // Find topmost non-transparent pixel
-          let topY = img.height;
+          // Find top of content
+          let topY = 0;
           for (let y = 0; y < img.height; y++) {
             for (let x = 0; x < img.width; x++) {
               const idx = (y * img.width + x) * 4;
-              const alpha = pixels[idx + 3];
-
-              if (alpha > 10) {
+              if (pixels[idx + 3] > 10) {
                 topY = y;
                 break;
               }
             }
-            if (topY < img.height) break;
+            if (topY > 0) break;
           }
 
-          const contentHeight = bottomY - topY;
-          console.log("[RemoveShoulders] Content Y range:", topY, "-", bottomY, "height:", contentHeight);
-
-          // Keep only top 65% of content (remove shoulders/neck below)
-          const keepHeight = Math.floor(contentHeight * 0.65);
-          const newBottomY = topY + keepHeight;
-
-          console.log("[RemoveShoulders] Keeping top", keepHeight, "px (65% of content)");
+          const cropHeight = cropBottomY - topY;
+          console.log("[RemoveShoulders] Cropping from Y", topY, "to", cropBottomY, "height:", cropHeight);
 
           // Create final canvas
           const canvas = document.createElement('canvas');
           canvas.width = img.width;
-          canvas.height = keepHeight;
+          canvas.height = cropHeight;
           const ctx = canvas.getContext('2d');
 
-          // Draw only head + short neck
+          // Draw only skin area
           ctx.drawImage(
             tempCanvas,
-            0, topY, img.width, keepHeight,
-            0, 0, img.width, keepHeight
+            0, topY, img.width, cropHeight,
+            0, 0, img.width, cropHeight
           );
 
           console.log("[RemoveShoulders] ✅ Final size:", canvas.width, "x", canvas.height);
