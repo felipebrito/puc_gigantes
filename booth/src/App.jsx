@@ -176,21 +176,31 @@ function App() {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = async () => {
-        const video = webcamRef.current.video;
+        console.log("[Crop] Image loaded, detecting face from captured image...");
 
-        // Detect face again for cropping
+        // Detect face FROM THE IMAGE, not from video
         const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 });
-        const detection = await faceapi.detectSingleFace(video, options);
+        let detection;
+
+        try {
+          detection = await faceapi.detectSingleFace(img, options);
+        } catch (err) {
+          console.error("[Crop] Face detection failed:", err);
+          console.log("[Crop] Returning original image");
+          resolve(imageSrc);
+          return;
+        }
 
         if (!detection) {
           // No face found, return original
-          console.warn("No face found for cropping, returning original");
+          console.warn("[Crop] No face found, returning original");
           resolve(imageSrc);
           return;
         }
 
         const box = detection.box;
         const { x, y, width, height } = box;
+        console.log("[Crop] Face detected:", { x, y, width, height });
 
         // Calculate crop area: 
         // - Center on face
@@ -229,7 +239,12 @@ function App() {
           0, 0, 400, 400 // Destination (full canvas)
         );
 
+        console.log("[Crop] ✅ Cropping complete");
         resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = (err) => {
+        console.error("[Crop] Image load error:", err);
+        resolve(imageSrc);
       };
       img.src = imageSrc;
     });
@@ -246,41 +261,45 @@ function App() {
     // 2. Background Processing (Fire and Forget from UI perspective)
     (async () => {
       try {
-        console.log("Starting background processing...");
+        console.log("[Upload] 📸 Starting background processing...");
 
         // NEW: Crop to face FIRST
         const croppedImage = await cropToFace(rawImageToProcess);
-        console.log("Face cropping complete");
+        console.log("[Upload] ✅ Face cropping complete");
 
         // Dynamic import
+        console.log("[Upload] Loading background removal library...");
         const { removeBackground } = await import('@imgly/background-removal');
+        console.log("[Upload] Library loaded");
 
         // Remove Background from CROPPED image
         let blob;
         try {
+          console.log("[Upload] Removing background...");
           blob = await removeBackground(croppedImage, {
             model: 'small', // Use small model for speed
             progress: (key, current, total) => { /* quiet */ }
           });
+          console.log("[Upload] Background removed");
         } catch (bgError) {
-          console.error("BG Removal failed, uploading cropped without BG removal", bgError);
+          console.error("[Upload] BG Removal failed, uploading cropped without BG removal", bgError);
           const res = await fetch(croppedImage);
           blob = await res.blob();
         }
 
         // Upload
+        console.log("[Upload] Uploading file...");
         const file = new File([blob], "visitor.png", { type: "image/png" });
         const formData = new FormData();
         formData.append('photo', file);
 
-        await axios.post(`${SERVER_URL}/upload`, formData, {
+        const response = await axios.post(`${SERVER_URL}/upload`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
-        console.log("Upload completed successfully in background");
+        console.log("[Upload] ✅ Upload completed successfully!", response.data);
 
       } catch (error) {
-        console.error("Background upload totally failed", error);
-        // We can't alert the user anymore as they might have walked away
+        console.error("[Upload] ❌ Background upload totally failed", error);
       }
     })();
   };
