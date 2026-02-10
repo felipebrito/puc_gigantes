@@ -204,9 +204,9 @@ function App() {
 
         // Calculate crop area: 
         // - Center on face
-        // - Include head + shoulders (expand face box)
+        // - Include head + neck only (no shoulders)
         // - Make it square for consistency
-        const expansionFactor = 2.0; // Include more area around face (2x the face width/height)
+        const expansionFactor = 1.3; // Tighter crop for head and neck only
         const cropSize = Math.max(width, height) * expansionFactor;
 
         // Center crop on face center
