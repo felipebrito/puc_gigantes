@@ -33,7 +33,8 @@ function App() {
         console.log("Loading FaceAPI Models...");
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.faceExpressionNet.loadFromUri('/models')
+          faceapi.nets.faceExpressionNet.loadFromUri('/models'),
+          faceapi.nets.faceLandmark68Net.loadFromUri('/models') // REQUIRED for eye detection
         ]);
         console.log("FaceAPI Models Loaded Successfully");
         setLoadingModels(false);
