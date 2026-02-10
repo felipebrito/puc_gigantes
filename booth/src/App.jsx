@@ -186,45 +186,74 @@ function App() {
           const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
           const pixels = imageData.data;
 
-          // Find bounds of non-transparent pixels
-          let minY = img.height;
-          let maxY = 0;
-
+          // Measure width (non-transparent pixels) at each horizontal line
+          const rowWidths = [];
           for (let y = 0; y < img.height; y++) {
+            let leftmost = img.width;
+            let rightmost = 0;
+
             for (let x = 0; x < img.width; x++) {
               const idx = (y * img.width + x) * 4;
               const alpha = pixels[idx + 3];
 
-              if (alpha > 10) { // Non-transparent pixel
-                minY = Math.min(minY, y);
-                maxY = Math.max(maxY, y);
+              if (alpha > 10) { // Non-transparent
+                leftmost = Math.min(leftmost, x);
+                rightmost = Math.max(rightmost, x);
               }
+            }
+
+            const width = rightmost > leftmost ? rightmost - leftmost : 0;
+            rowWidths.push({ y, width });
+          }
+
+          // Find first non-empty row (top of head)
+          const contentRows = rowWidths.filter(r => r.width > 0);
+          if (contentRows.length === 0) {
+            console.log("[RemoveShoulders] No content found, returning original");
+            resolve(blob);
+            return;
+          }
+
+          const topY = contentRows[0].y;
+
+          // Find where shoulders start: significant width increase
+          // Scan from top, find where width increases by >30% compared to neck minimum
+          let neckMinWidth = Infinity;
+          let shoulderY = contentRows[contentRows.length - 1].y; // Default to bottom
+
+          for (let i = 0; i < contentRows.length; i++) {
+            const row = contentRows[i];
+
+            // Track minimum width (likely neck area)
+            if (row.width < neckMinWidth) {
+              neckMinWidth = row.width;
+            }
+
+            // Detect shoulder start: width increases significantly from neck
+            if (row.width > neckMinWidth * 1.4) {
+              shoulderY = row.y;
+              console.log("[RemoveShoulders] Shoulders detected at Y:", shoulderY, "width jump:", neckMinWidth, "->", row.width);
+              break;
             }
           }
 
-          console.log("[RemoveShoulders] Content bounds: Y", minY, "-", maxY);
+          const cropHeight = shoulderY - topY;
+          console.log("[RemoveShoulders] Cropping from Y", topY, "to", shoulderY, "(height:", cropHeight, "px)");
 
-          // Calculate new height: keep only top 60% of the content (head + neck only)
-          const contentHeight = maxY - minY;
-          const keepHeight = Math.floor(contentHeight * 0.6); // Keep only 60% from top
-          const newMaxY = minY + keepHeight;
-
-          console.log("[RemoveShoulders] Cropping to Y", minY, "-", newMaxY, "(keeping", keepHeight, "px)");
-
-          // Create final canvas with cropped content
+          // Create final canvas
           const canvas = document.createElement('canvas');
           canvas.width = img.width;
-          canvas.height = keepHeight;
+          canvas.height = cropHeight;
           const ctx = canvas.getContext('2d');
 
-          // Draw only the head+neck portion
+          // Draw head + neck only (stop at shoulders)
           ctx.drawImage(
             tempCanvas,
-            0, minY, img.width, keepHeight, // Source: top 60% of content
-            0, 0, img.width, keepHeight // Destination
+            0, topY, img.width, cropHeight,
+            0, 0, img.width, cropHeight
           );
 
-          console.log("[RemoveShoulders] ✅ New size:", canvas.width, "x", canvas.height);
+          console.log("[RemoveShoulders] ✅ Final size:", canvas.width, "x", canvas.height);
 
           // Convert back to blob
           canvas.toBlob((newBlob) => {
