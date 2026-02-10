@@ -168,6 +168,41 @@ function App() {
     setCountingDown(false);
   }, [webcamRef]);
 
+  const removeShoulders = async (blob) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          console.log("[RemoveShoulders] Processing, original size:", img.width, "x", img.height);
+
+          // Create canvas - keep width, reduce height to 75% (remove bottom 25%)
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = Math.floor(img.height * 0.75);
+
+          const ctx = canvas.getContext('2d');
+
+          // Draw only top 75% (head + neck, no shoulders)
+          ctx.drawImage(
+            img,
+            0, 0, img.width, canvas.height, // Source: top 75%
+            0, 0, canvas.width, canvas.height // Destination
+          );
+
+          console.log("[RemoveShoulders] ✅ New size:", canvas.width, "x", canvas.height);
+
+          // Convert back to blob
+          canvas.toBlob((newBlob) => {
+            resolve(newBlob);
+          }, 'image/png');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(blob);
+    });
+  };
+
   const retake = () => {
     setImgSrc(null);
   };
@@ -204,9 +239,9 @@ function App() {
 
         // Calculate crop area: 
         // - Center on face
-        // - Include head + shoulders (expand face box for quality)
+        // - Include head + neck only (no shoulders)
         // - Make it square for consistency
-        const expansionFactor = 2.0; // Back to 2.0 for good quality
+        const expansionFactor = 1.3; // Tighter crop for head and neck only
         const cropSize = Math.max(width, height) * expansionFactor;
 
         // Center crop on face center
@@ -250,39 +285,6 @@ function App() {
     });
   };
 
-  // NEW: Remove shoulders after background removal
-  const removeShoulders = async (imageSrc) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        console.log("[RemoveShoulders] Processing image...");
-
-        // Create canvas
-        const canvas = document.createElement('canvas');
-        // Keep width, but reduce height to 75% (cut bottom 25% where shoulders are)
-        canvas.width = img.width;
-        canvas.height = Math.floor(img.height * 0.75);
-
-        const ctx = canvas.getContext('2d');
-
-        // Draw only the top 75% of the image (head + neck, no shoulders)
-        ctx.drawImage(
-          img,
-          0, 0, img.width, canvas.height, // Source: top 75%
-          0, 0, canvas.width, canvas.height // Destination: full canvas
-        );
-
-        console.log("[RemoveShoulders] ✅ Shoulders removed, new size:", canvas.width, "x", canvas.height);
-        resolve(canvas.toDataURL('image/png'));
-      };
-      img.onerror = (err) => {
-        console.error("[RemoveShoulders] Error:", err);
-        resolve(imageSrc);
-      };
-      img.src = imageSrc;
-    });
-  };
-
   const sendPhoto = async () => {
     if (!imgSrc) return;
 
@@ -296,38 +298,28 @@ function App() {
       try {
         console.log("[Upload] 📸 Starting background processing...");
 
-        // Step 1: Crop to face with good quality (2.0x expansion)
+        // NEW: Crop to face FIRST
         const croppedImage = await cropToFace(rawImageToProcess);
         console.log("[Upload] ✅ Face cropping complete");
 
-        // Step 2: Remove background
+        // Dynamic import
         console.log("[Upload] Loading background removal library...");
         const { removeBackground } = await import('@imgly/background-removal');
         console.log("[Upload] Library loaded");
 
+        // Remove Background from CROPPED image
         let blob;
         try {
           console.log("[Upload] Removing background...");
-          const bgRemovedBlob = await removeBackground(croppedImage, {
-            model: 'small',
+          blob = await removeBackground(croppedImage, {
+            model: 'small', // Use small model for speed
             progress: (key, current, total) => { /* quiet */ }
           });
           console.log("[Upload] Background removed");
 
-          // Convert blob to data URL for further processing
-          const bgRemovedDataUrl = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.readAsDataURL(bgRemovedBlob);
-          });
-
           // Step 3: Remove shoulders (crop bottom 25%)
-          const finalImage = await removeShoulders(bgRemovedDataUrl);
+          blob = await removeShoulders(blob);
           console.log("[Upload] ✅ Shoulders removed");
-
-          // Convert back to blob
-          const res = await fetch(finalImage);
-          blob = await res.blob();
 
         } catch (bgError) {
           console.error("[Upload] BG Removal failed, uploading cropped without BG removal", bgError);
@@ -352,178 +344,83 @@ function App() {
     })();
   };
 
-  // Center crop on face center
-  const faceCenterX = x + width / 2;
-  const faceCenterY = y + height / 2;
+  return (
+    <div className="booth-container">
+      <h1 className="title">Dinossauros POA</h1>
 
-  let cropX = faceCenterX - cropSize / 2;
-  let cropY = faceCenterY - cropSize / 2;
-
-  // Ensure crop stays within image bounds
-  const imgWidth = img.width;
-  const imgHeight = img.height;
-
-  cropX = Math.max(0, Math.min(cropX, imgWidth - cropSize));
-  cropY = Math.max(0, Math.min(cropY, imgHeight - cropSize));
-
-  // Adjust if crop exceeds bounds
-  const actualCropSize = Math.min(cropSize, imgWidth - cropX, imgHeight - cropY);
-
-  // Create canvas for cropped image
-  const canvas = document.createElement('canvas');
-  canvas.width = 400; // Output size (square)
-  canvas.height = 400;
-  const ctx = canvas.getContext('2d');
-
-  // Draw cropped portion, scaled to canvas
-  ctx.drawImage(
-    img,
-    cropX, cropY, actualCropSize, actualCropSize, // Source crop
-    0, 0, 400, 400 // Destination (full canvas)
-  );
-
-  console.log("[Crop] ✅ Cropping complete");
-  resolve(canvas.toDataURL('image/png'));
-};
-img.onerror = (err) => {
-  console.error("[Crop] Image load error:", err);
-  resolve(imageSrc);
-};
-img.src = imageSrc;
-    });
-  };
-
-const sendPhoto = async () => {
-  if (!imgSrc) return;
-
-  // 1. Immediate Success Feedback to User
-  const rawImageToProcess = imgSrc; // Capture current image
-  setImgSrc(null); // Reset UI for next person immediately
-  alert("Enviado! Sua foto aparecerá em breve.");
-
-  // 2. Background Processing (Fire and Forget from UI perspective)
-  (async () => {
-    try {
-      console.log("[Upload] 📸 Starting background processing...");
-
-      // NEW: Crop to face FIRST
-      const croppedImage = await cropToFace(rawImageToProcess);
-      console.log("[Upload] ✅ Face cropping complete");
-
-      // Dynamic import
-      console.log("[Upload] Loading background removal library...");
-      const { removeBackground } = await import('@imgly/background-removal');
-      console.log("[Upload] Library loaded");
-
-      // Remove Background from CROPPED image
-      let blob;
-      try {
-        console.log("[Upload] Removing background...");
-        blob = await removeBackground(croppedImage, {
-          model: 'small', // Use small model for speed
-          progress: (key, current, total) => { /* quiet */ }
-        });
-        console.log("[Upload] Background removed");
-      } catch (bgError) {
-        console.error("[Upload] BG Removal failed, uploading cropped without BG removal", bgError);
-        const res = await fetch(croppedImage);
-        blob = await res.blob();
-      }
-
-      // Upload
-      console.log("[Upload] Uploading file...");
-      const file = new File([blob], "visitor.png", { type: "image/png" });
-      const formData = new FormData();
-      formData.append('photo', file);
-
-      const response = await axios.post(`${SERVER_URL}/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      console.log("[Upload] ✅ Upload completed successfully!", response.data);
-
-    } catch (error) {
-      console.error("[Upload] ❌ Background upload totally failed", error);
-    }
-  })();
-};
-
-return (
-  <div className="booth-container">
-    <h1 className="title">Dinossauros POA</h1>
-
-    {!serverOnline && (
-      <div style={{ background: 'orange', color: 'black', padding: '10px', marginBottom: '20px', borderRadius: '8px' }}>
-        ⚠️ Conexão insegura bloqueada!
-        <br />
-        <a href={SERVER_URL} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 'bold' }}>
-          CLIQUE AQUI e aceite o certificado (Avançado -&gt; Ir para...)
-        </a>
-        <br />
-        Depois recarregue esta página.
-      </div>
-    )}
-
-    <div className="camera-wrapper">
-      {imgSrc ? (
-        <img src={imgSrc} alt="captured" className="webcam" />
-      ) : (
-        <Webcam
-          audio={false}
-          ref={webcamRef}
-          screenshotFormat="image/jpeg"
-          className="webcam"
-          videoConstraints={{
-            width: 500,
-            height: 500,
-            facingMode: "user"
-          }}
-        />
-      )}
-
-      {/* Face Feedback Overlay */}
-      {!imgSrc && !countingDown && (
-        <div className="overlay-instruction" style={{
-          color: isFaceValid ? '#4caf50' : 'white',
-          fontWeight: 'bold',
-          textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-          background: 'rgba(0,0,0,0.3)',
-          padding: '5px 10px',
-          borderRadius: '5px'
-        }}>
-          {faceFeedback}
+      {!serverOnline && (
+        <div style={{ background: 'orange', color: 'black', padding: '10px', marginBottom: '20px', borderRadius: '8px' }}>
+          ⚠️ Conexão insegura bloqueada!
+          <br />
+          <a href={SERVER_URL} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 'bold' }}>
+            CLIQUE AQUI e aceite o certificado (Avançado -&gt; Ir para...)
+          </a>
+          <br />
+          Depois recarregue esta página.
         </div>
       )}
 
-      {countingDown && <div className="countdown">{countdown > 0 ? countdown : ''}</div>}
-    </div>
+      <div className="camera-wrapper">
+        {imgSrc ? (
+          <img src={imgSrc} alt="captured" className="webcam" />
+        ) : (
+          <Webcam
+            audio={false}
+            ref={webcamRef}
+            screenshotFormat="image/jpeg"
+            className="webcam"
+            videoConstraints={{
+              width: 500,
+              height: 500,
+              facingMode: "user"
+            }}
+          />
+        )}
 
-    <div className="controls">
-      {!imgSrc && !countingDown && (
-        <button
-          className="btn"
-          onClick={startCapture}
-          disabled={!isFaceValid && !loadingModels}
-          style={{ opacity: isFaceValid ? 1 : 0.5, cursor: isFaceValid ? 'pointer' : 'not-allowed' }}
-        >
-          Tirar Foto
-        </button>
-      )}
+        {/* Face Feedback Overlay */}
+        {!imgSrc && !countingDown && (
+          <div className="overlay-instruction" style={{
+            color: isFaceValid ? '#4caf50' : 'white',
+            fontWeight: 'bold',
+            textShadow: '0 2px 4px rgba(0,0,0,0.8)',
+            background: 'rgba(0,0,0,0.3)',
+            padding: '5px 10px',
+            borderRadius: '5px'
+          }}>
+            {faceFeedback}
+          </div>
+        )}
 
-      {imgSrc && (
-        <>
-          <button className="btn btn-secondary" onClick={retake} disabled={uploading}>
-            Tentar De Novo
+        {countingDown && <div className="countdown">{countdown > 0 ? countdown : ''}</div>}
+      </div>
+
+      <div className="controls">
+        {!imgSrc && !countingDown && (
+          <button
+            className="btn"
+            onClick={startCapture}
+            disabled={!isFaceValid && !loadingModels}
+            style={{ opacity: isFaceValid ? 1 : 0.5, cursor: isFaceValid ? 'pointer' : 'not-allowed' }}
+          >
+            Tirar Foto
           </button>
-          <button className="btn" onClick={sendPhoto} disabled={uploading}>
-            {uploading ? 'Enviando...' : 'Enviar'}
-          </button>
-        </>
-      )}
-    </div>
+        )}
 
-    <div className={`flash ${flash ? 'active' : ''}`} />
-  </div>
-);
+        {imgSrc && (
+          <>
+            <button className="btn btn-secondary" onClick={retake} disabled={uploading}>
+              Tentar De Novo
+            </button>
+            <button className="btn" onClick={sendPhoto} disabled={uploading}>
+              {uploading ? 'Enviando...' : 'Enviar'}
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className={`flash ${flash ? 'active' : ''}`} />
+    </div>
+  );
 }
 
 export default App;
