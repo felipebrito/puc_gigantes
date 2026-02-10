@@ -176,18 +176,52 @@ function App() {
         img.onload = () => {
           console.log("[RemoveShoulders] Processing, original size:", img.width, "x", img.height);
 
-          // Create canvas - keep width, reduce height to 75% (remove bottom 25%)
+          // Draw to canvas to access pixel data
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = img.width;
+          tempCanvas.height = img.height;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.drawImage(img, 0, 0);
+
+          const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+          const pixels = imageData.data;
+
+          // Find bounds of non-transparent pixels
+          let minY = img.height;
+          let maxY = 0;
+
+          for (let y = 0; y < img.height; y++) {
+            for (let x = 0; x < img.width; x++) {
+              const idx = (y * img.width + x) * 4;
+              const alpha = pixels[idx + 3];
+
+              if (alpha > 10) { // Non-transparent pixel
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+              }
+            }
+          }
+
+          console.log("[RemoveShoulders] Content bounds: Y", minY, "-", maxY);
+
+          // Calculate new height: keep only top 60% of the content (head + neck only)
+          const contentHeight = maxY - minY;
+          const keepHeight = Math.floor(contentHeight * 0.6); // Keep only 60% from top
+          const newMaxY = minY + keepHeight;
+
+          console.log("[RemoveShoulders] Cropping to Y", minY, "-", newMaxY, "(keeping", keepHeight, "px)");
+
+          // Create final canvas with cropped content
           const canvas = document.createElement('canvas');
           canvas.width = img.width;
-          canvas.height = Math.floor(img.height * 0.75);
-
+          canvas.height = keepHeight;
           const ctx = canvas.getContext('2d');
 
-          // Draw only top 75% (head + neck, no shoulders)
+          // Draw only the head+neck portion
           ctx.drawImage(
-            img,
-            0, 0, img.width, canvas.height, // Source: top 75%
-            0, 0, canvas.width, canvas.height // Destination
+            tempCanvas,
+            0, minY, img.width, keepHeight, // Source: top 60% of content
+            0, 0, img.width, keepHeight // Destination
           );
 
           console.log("[RemoveShoulders] ✅ New size:", canvas.width, "x", canvas.height);
