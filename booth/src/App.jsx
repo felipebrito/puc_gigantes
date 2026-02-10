@@ -186,71 +186,56 @@ function App() {
           const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
           const pixels = imageData.data;
 
-          // Measure width (non-transparent pixels) at each horizontal line
-          const rowWidths = [];
-          for (let y = 0; y < img.height; y++) {
-            let leftmost = img.width;
-            let rightmost = 0;
-
+          // Find lowest non-transparent pixel (bottom of content)
+          let bottomY = 0;
+          for (let y = img.height - 1; y >= 0; y--) {
             for (let x = 0; x < img.width; x++) {
               const idx = (y * img.width + x) * 4;
               const alpha = pixels[idx + 3];
 
-              if (alpha > 10) { // Non-transparent
-                leftmost = Math.min(leftmost, x);
-                rightmost = Math.max(rightmost, x);
+              if (alpha > 10) {
+                bottomY = y;
+                break;
               }
             }
-
-            const width = rightmost > leftmost ? rightmost - leftmost : 0;
-            rowWidths.push({ y, width });
+            if (bottomY > 0) break;
           }
 
-          // Find first non-empty row (top of head)
-          const contentRows = rowWidths.filter(r => r.width > 0);
-          if (contentRows.length === 0) {
-            console.log("[RemoveShoulders] No content found, returning original");
-            resolve(blob);
-            return;
-          }
+          // Find topmost non-transparent pixel
+          let topY = img.height;
+          for (let y = 0; y < img.height; y++) {
+            for (let x = 0; x < img.width; x++) {
+              const idx = (y * img.width + x) * 4;
+              const alpha = pixels[idx + 3];
 
-          const topY = contentRows[0].y;
-
-          // Find where shoulders start: significant width increase
-          // Scan from top, find where width increases by >30% compared to neck minimum
-          let neckMinWidth = Infinity;
-          let shoulderY = contentRows[contentRows.length - 1].y; // Default to bottom
-
-          for (let i = 0; i < contentRows.length; i++) {
-            const row = contentRows[i];
-
-            // Track minimum width (likely neck area)
-            if (row.width < neckMinWidth) {
-              neckMinWidth = row.width;
+              if (alpha > 10) {
+                topY = y;
+                break;
+              }
             }
-
-            // Detect shoulder start: width increases significantly from neck
-            if (row.width > neckMinWidth * 1.15) {
-              shoulderY = row.y;
-              console.log("[RemoveShoulders] Shoulders detected at Y:", shoulderY, "width jump:", neckMinWidth, "->", row.width);
-              break;
-            }
+            if (topY < img.height) break;
           }
 
-          const cropHeight = shoulderY - topY;
-          console.log("[RemoveShoulders] Cropping from Y", topY, "to", shoulderY, "(height:", cropHeight, "px)");
+          const contentHeight = bottomY - topY;
+          console.log("[RemoveShoulders] Content Y range:", topY, "-", bottomY, "height:", contentHeight);
+
+          // Keep only top 65% of content (remove shoulders/neck below)
+          const keepHeight = Math.floor(contentHeight * 0.65);
+          const newBottomY = topY + keepHeight;
+
+          console.log("[RemoveShoulders] Keeping top", keepHeight, "px (65% of content)");
 
           // Create final canvas
           const canvas = document.createElement('canvas');
           canvas.width = img.width;
-          canvas.height = cropHeight;
+          canvas.height = keepHeight;
           const ctx = canvas.getContext('2d');
 
-          // Draw head + neck only (stop at shoulders)
+          // Draw only head + short neck
           ctx.drawImage(
             tempCanvas,
-            0, topY, img.width, cropHeight,
-            0, 0, img.width, cropHeight
+            0, topY, img.width, keepHeight,
+            0, 0, img.width, keepHeight
           );
 
           console.log("[RemoveShoulders] ✅ Final size:", canvas.width, "x", canvas.height);
@@ -274,14 +259,14 @@ function App() {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = async () => {
-        console.log("[Crop] Image loaded, detecting face from captured image...");
+        console.log("[Crop] Image loaded, detecting face WITH landmarks...");
 
-        // Detect face FROM THE IMAGE, not from video
+        // Detect face WITH landmarks (eyes, nose, mouth)
         const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 });
         let detection;
 
         try {
-          detection = await faceapi.detectSingleFace(img, options);
+          detection = await faceapi.detectSingleFace(img, options).withFaceLandmarks();
         } catch (err) {
           console.error("[Crop] Face detection failed:", err);
           console.log("[Crop] Returning original image");
@@ -290,54 +275,89 @@ function App() {
         }
 
         if (!detection) {
-          // No face found, return original
           console.warn("[Crop] No face found, returning original");
           resolve(imageSrc);
           return;
         }
 
-        const box = detection.box;
-        const { x, y, width, height } = box;
-        console.log("[Crop] Face detected:", { x, y, width, height });
+        const landmarks = detection.landmarks;
+        const box = detection.detection.box;
 
-        // Calculate crop area: 
-        // - Center on face
-        // - Include head + neck only (no shoulders)
-        // - Make it square for consistency
-        const expansionFactor = 2.5; // Increased to avoid cutting headnd neck only
-        const cropSize = Math.max(width, height) * expansionFactor;
+        if (!landmarks) {
+          console.warn("[Crop] No landmarks found, using simple box crop");
+          // Fallback to simple crop
+          const { x, y, width, height } = box;
+          const canvas = document.createElement('canvas');
+          const size = Math.max(width, height) * 1.5;
+          canvas.width = 300;
+          canvas.height = 300;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, x - size / 4, y - size / 4, size, size, 0, 0, 300, 300);
+          resolve(canvas.toDataURL('image/png'));
+          return;
+        }
 
-        // Center crop on face center
-        const faceCenterX = x + width / 2;
-        const faceCenterY = y + height / 2;
+        // Get eye positions
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
 
-        let cropX = faceCenterX - cropSize / 2;
-        let cropY = faceCenterY - cropSize / 2;
+        // Calculate eye center
+        const leftEyeCenter = {
+          x: leftEye.reduce((sum, p) => sum + p.x, 0) / leftEye.length,
+          y: leftEye.reduce((sum, p) => sum + p.y, 0) / leftEye.length
+        };
+        const rightEyeCenter = {
+          x: rightEye.reduce((sum, p) => sum + p.x, 0) / rightEye.length,
+          y: rightEye.reduce((sum, p) => sum + p.y, 0) / rightEye.length
+        };
 
-        // Ensure crop stays within image bounds
-        const imgWidth = img.width;
-        const imgHeight = img.height;
+        const eyesCenterX = (leftEyeCenter.x + rightEyeCenter.x) / 2;
+        const eyesCenterY = (leftEyeCenter.y + rightEyeCenter.y) / 2;
 
-        cropX = Math.max(0, Math.min(cropX, imgWidth - cropSize));
-        cropY = Math.max(0, Math.min(cropY, imgHeight - cropSize));
+        console.log("[Crop] Eyes center at:", eyesCenterX, eyesCenterY);
 
-        // Adjust if crop exceeds bounds
-        const actualCropSize = Math.min(cropSize, imgWidth - cropX, imgHeight - cropY);
+        // Reference images show:
+        // - Eyes positioned in upper third (around 30-35% from top)
+        // - Tight crop around face
+        // - Output should be ~300x400px portrait
 
-        // Create canvas for cropped image
+        const outputWidth = 300;
+        const outputHeight = 400;
+
+        // Position eyes at 30% from top
+        const eyesYPositionRatio = 0.30;
+
+        // Calculate crop area
+        // If eyes are at 30% from top of output (120px in 400px image)
+        // Then top of crop should be eyesCenterY - 120
+        const cropTop = eyesCenterY - (outputHeight * eyesYPositionRatio);
+        const cropBottom = cropTop + outputHeight;
+
+        // Center horizontally on eyes
+        const cropLeft = eyesCenterX - (outputWidth / 2);
+        const cropRight = cropLeft + outputWidth;
+
+        console.log("[Crop] Crop area:", {
+          left: cropLeft,
+          top: cropTop,
+          width: outputWidth,
+          height: outputHeight
+        });
+
+        // Create canvas
         const canvas = document.createElement('canvas');
-        canvas.width = 400; // Output size (square)
-        canvas.height = 400;
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
         const ctx = canvas.getContext('2d');
 
-        // Draw cropped portion, scaled to canvas
+        // Draw cropped portion
         ctx.drawImage(
           img,
-          cropX, cropY, actualCropSize, actualCropSize, // Source crop
-          0, 0, 400, 400 // Destination (full canvas)
+          cropLeft, cropTop, outputWidth, outputHeight, // Source
+          0, 0, outputWidth, outputHeight // Destination
         );
 
-        console.log("[Crop] ✅ Cropping complete");
+        console.log("[Crop] ✅ Cropping complete, size:", outputWidth, "x", outputHeight);
         resolve(canvas.toDataURL('image/png'));
       };
       img.onerror = (err) => {
