@@ -230,7 +230,7 @@ function App() {
             }
 
             // Detect shoulder start: width increases significantly from neck
-            if (row.width > neckMinWidth * 1.4) {
+            if (row.width > neckMinWidth * 1.15) {
               shoulderY = row.y;
               console.log("[RemoveShoulders] Shoulders detected at Y:", shoulderY, "width jump:", neckMinWidth, "->", row.width);
               break;
@@ -304,7 +304,7 @@ function App() {
         // - Center on face
         // - Include head + neck only (no shoulders)
         // - Make it square for consistency
-        const expansionFactor = 1.3; // Tighter crop for head and neck only
+        const expansionFactor = 2.5; // Increased to avoid cutting headnd neck only
         const cropSize = Math.max(width, height) * expansionFactor;
 
         // Center crop on face center
