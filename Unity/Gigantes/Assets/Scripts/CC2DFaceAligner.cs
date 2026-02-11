@@ -8,8 +8,8 @@ public class CC2DFaceAligner : MonoBehaviour
     
     [Header("Target Bone")]
     public string headBoneName = "Head"; // Or "Bone_Head"
-    public float faceScale = 4.47f; 
-    public Vector3 faceOffset = new Vector3(-0.03f, -0.08f, -0.2f);
+    public float faceScale = 4.74f; 
+    public Vector3 faceOffset = new Vector3(-0.15f, -0.38f, -0.2f);
     public Vector3 faceRotation = Vector3.zero;
 
     private Transform _headBone;
@@ -30,7 +30,8 @@ public class CC2DFaceAligner : MonoBehaviour
     System.Collections.IEnumerator ApplyFaceRoutine(Texture2D photo)
     {
         // Wait longer to ensure everything is initialized
-        yield return new WaitForSeconds(0.5f);
+        // Wait briefly (frame) to ensure everything is initialized
+        yield return null;
         
         // 1. Find Head Bone if not found
         if (!_headBone)
@@ -80,27 +81,13 @@ public class CC2DFaceAligner : MonoBehaviour
         Renderer r = _currentFaceObj.GetComponent<Renderer>();
         r.sortingOrder = 100; // Force on top of everything
         
-        Shader shader = Shader.Find("Unlit/Transparent"); // Force simple transp shader
-        if (!shader) shader = Shader.Find("Universal Render Pipeline/Unlit");
-        // Fallback for CC2D's Unlit if needed
-        // if (!shader) shader = Shader.Find("Sprites/Default");
+        // Use Sprites/Default which is always included in builds to avoid Pink Shader issue
+        Shader shader = Shader.Find("Sprites/Default");
+        if (!shader) shader = Shader.Find("Mobile/Particles/Alpha Blended"); // Fallback
 
         Material mat = new Material(shader);
+        mat.mainTexture = photo;
         
-        if (shader.name.Contains("Universal Render Pipeline"))
-        {
-            mat.SetTexture("_BaseMap", photo);
-            mat.SetFloat("_Surface", 1); // Transparent
-            mat.SetInt("_Blend", 0);
-            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            mat.SetInt("_ZWrite", 0);
-        }
-        else
-        {
-            mat.mainTexture = photo;
-        }
-
         r.material = mat;
         
         // Debug Cube to verify position

@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "npm run dev",
+    "lab": "npm run dev -- --open -- ?lab",
+    "chroma": "npm run dev -- --open -- ?chroma",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

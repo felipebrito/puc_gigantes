@@ -2,6 +2,7 @@ import React, { useRef, useState, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import axios from 'axios';
 import * as faceapi from 'face-api.js';
+import { GooeyLoader } from './GooeyLoader';
 import './BoothApp.css';
 
 // Server URL - Update this if running on a different machine
@@ -20,9 +21,17 @@ function App() {
   const [faceFeedback, setFaceFeedback] = useState("Carregando IA...");
   const [isFaceValid, setIsFaceValid] = useState(false);
   const [serverOnline, setServerOnline] = useState(true);
+  const [showSuccess, setShowSuccess] = useState(false); // NEW: Non-blocking success state
+
+  // Refs to prevent race conditions and immediate re-triggering
+  const isCapturingRef = useRef(false);
+  const cooldownTimeRef = useRef(0); // Timestamp when cooldown expires
+  const isProcessingRef = useRef(false); // Track if we are crunching numbers
+  const timerRef = useRef(null); // Track the active countdown interval
 
   // Check connection on load
   React.useEffect(() => {
+    // ... (existing fetch) ...
     fetch(SERVER_URL)
       .then(() => setServerOnline(true))
       .catch(() => setServerOnline(false));
@@ -34,7 +43,7 @@ function App() {
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
           faceapi.nets.faceExpressionNet.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68Net.loadFromUri('/models') // REQUIRED for eye detection
+          faceapi.nets.faceLandmark68Net.loadFromUri('/models') // For precise face contour
         ]);
         console.log("FaceAPI Models Loaded Successfully");
         setLoadingModels(false);
@@ -42,7 +51,6 @@ function App() {
       } catch (e) {
         console.error("Error loading models", e);
         setFaceFeedback("Erro ao carregar IA");
-        // Try to continue anyway? No, validation won't work.
       }
     };
     loadModels();
@@ -51,8 +59,21 @@ function App() {
   // Face Detection Loop
   React.useEffect(() => {
     if (loadingModels || countingDown || imgSrc) return;
+    console.log("[Effect] Restarting detection loop with:", { loadingModels, countingDown, imgSrc });
 
     const interval = setInterval(async () => {
+      // Diagnostic Log - UNCOMMENTED FOR DEBUGGING
+      console.log("[Loop] Tick. Refs:", {
+        capturing: isCapturingRef.current,
+        processing: isProcessingRef.current,
+        cooldownTime: cooldownTimeRef.current,
+        remaining: Math.max(0, cooldownTimeRef.current - Date.now()),
+        videoReady: webcamRef.current?.video?.readyState
+      });
+
+      // Check refs to bail out early if we are locked/cooling down OR processing a previous photo
+      if (isCapturingRef.current || isProcessingRef.current || Date.now() < cooldownTimeRef.current) return;
+
       if (webcamRef.current && webcamRef.current.video && webcamRef.current.video.readyState === 4) {
         const video = webcamRef.current.video;
 
@@ -65,15 +86,8 @@ function App() {
           // Try with expressions
           detection = await faceapi.detectSingleFace(video, options).withFaceExpressions();
         } catch (err) {
-          console.warn("Detection error, retrying without expressions", err);
-          try {
-            // Fallback: Just detect face
-            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 });
-            detection = await faceapi.detectSingleFace(video, options);
-          } catch (err2) {
-            console.error("Detection totally failed", err2);
-            return;
-          }
+          // ... (keep fallback) ...
+          return;
         }
 
         if (!detection) {
@@ -82,15 +96,9 @@ function App() {
           return;
         }
 
-        // Safe Access & Debugging
-        // detecSingleFace().withFaceExpressions() returns Check: { detection: FaceDetection, expressions: ... }
-        // OR standard FaceDetection extended.
         const box = detection.box || (detection.detection && detection.detection.box);
-
         if (!box) {
-          console.warn("Detection object has no box:", detection);
-          setFaceFeedback("Erro na detecção");
-          setIsFaceValid(false);
+          // ...
           return;
         }
 
@@ -99,19 +107,8 @@ function App() {
         const videoH = video.videoHeight;
 
         const centerX = x + width / 2;
-        const centerY = y + height / 2;
-
-        // Check centering (relative to video center)
-        // Video center is videoW / 2
-        // We want face to be in the center horizontally
         const isCenteredX = Math.abs(centerX - videoW / 2) < videoW * 0.15; // 15% tolerance
-
-        // Check size (User must be close enough)
-        // Face width should be at least 20% of video width?
         const isCloseEnough = width > videoW * 0.2;
-
-        // Check vertical position (Should not be too low or too high?)
-        // Let's rely mostly on simple presence + size for "validation" to avoid being annoying.
 
         if (!isCloseEnough) {
           setFaceFeedback("Aproxime-se mais");
@@ -125,38 +122,74 @@ function App() {
 
           // Smile Trigger
           if (detection.expressions && detection.expressions.happy > 0.7) {
-            setFaceFeedback("Sorriso detectado! 📸");
-            // Debounce / Trigger
-            if (!countingDown && !imgSrc) {
+            // Ensure we aren't already capturing or in cooldown
+            if (!isCapturingRef.current && Date.now() > cooldownTimeRef.current && !countingDown && !imgSrc) {
+              console.log("[DEBUG] Smile detected! Triggering capture.");
+              setFaceFeedback("Sorriso detectado! 📸");
               startCapture();
+            } else {
+              // Optional sparse logging to avoid spam
+              if (Math.random() < 0.05) {
+                console.log("[DEBUG] Smile ignored. Locked/Cooling:", {
+                  capturing: isCapturingRef.current,
+                  cooldown: cooldownRef.current,
+                  countingDown,
+                  hasImg: !!imgSrc
+                });
+              }
             }
           }
         }
-
       }
-    }, 200); // Check every 200ms
+    }, 500); // Check every 500ms to save CPU
 
     return () => clearInterval(interval);
   }, [loadingModels, countingDown, imgSrc]);
 
   // Capture functionality
+  // Capture functionality
   const startCapture = () => {
+    if (isCapturingRef.current || isProcessingRef.current || uploading) {
+      console.warn("[DEBUG] startCapture blocked: Busy (Capturing/Processing/Uploading)");
+      return;
+    }
+    console.log("[DEBUG] startCapture initiated");
+    isCapturingRef.current = true;
+
+    // Safety: Clear any existing timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
     setCountingDown(true);
     setCountdown(3);
 
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev === 1) {
-          clearInterval(interval);
-          triggerCapture();
-          return 0;
+    let localCount = 3;
+    timerRef.current = setInterval(() => {
+      localCount -= 1;
+      console.log("[DEBUG] Countdown tick:", localCount);
+      setCountdown(localCount);
+
+      if (localCount <= 0) {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
         }
-        return prev - 1;
-      });
+        triggerCapture();
+      }
     }, 1000);
   };
 
   const triggerCapture = useCallback(() => {
+    console.log("[DEBUG] triggerCapture executed");
+
+    // Clear timer if it's still running
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
     // 1. Get raw screenshot
     const imageSrc = webcamRef.current.getScreenshot();
 
@@ -167,136 +200,136 @@ function App() {
     // Show raw image immediately
     setImgSrc(imageSrc);
     setCountingDown(false);
+
+    // Release capture lock
+    console.log("[DEBUG] Capture lock released");
+    isCapturingRef.current = false;
   }, [webcamRef]);
 
-  const removeShoulders = async (blob) => {
+  const retake = () => {
+    console.log("[DEBUG] Retake clicked - resetting state");
+
+    // Clear any pending countdown
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setCountingDown(false);
+
+    setImgSrc(null);
+    isCapturingRef.current = false; // FORCE RESET
+    console.log("[DEBUG] isCapturingRef set to false");
+    // Cooldown prevents immediate re-trigger by smile
+    const COOLDOWN_MS = 2000;
+    cooldownTimeRef.current = Date.now() + COOLDOWN_MS;
+    console.log(`[DEBUG] Cooldown applied until: ${cooldownTimeRef.current}`);
+  };
+
+  // Apply precise face mask using landmarks detected directly on this image
+  const applyLandmarkMask = async (blob) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = new Image();
-        img.onload = () => {
-          console.log("[RemoveShoulders] Processing, original size:", img.width, "x", img.height);
+        img.onload = async () => {
+          console.log("[LandmarkMask] Processing:", img.width, "x", img.height);
 
-          // Draw to canvas to access pixel data
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = img.width;
-          tempCanvas.height = img.height;
-          const tempCtx = tempCanvas.getContext('2d');
-          tempCtx.drawImage(img, 0, 0);
+          // Re-detect face landmarks directly on THIS image (no coordinate transformation needed)
+          const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.2 });
+          let detection;
 
-          const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
-          const pixels = imageData.data;
-
-          // Helper: Check if color is similar to reference
-          const colorDistance = (r1, g1, b1, r2, g2, b2) => {
-            return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
-          };
-
-          // Sample skin color from center-top area (forehead/face)
-          const sampleX = Math.floor(img.width / 2);
-          const sampleY = Math.floor(img.height * 0.2); // 20% from top (face area)
-
-          let skinR = 0, skinG = 0, skinB = 0;
-          let skinSamples = 0;
-
-          // Sample 20x20 area around center-top
-          for (let dy = -10; dy <= 10; dy++) {
-            for (let dx = -10; dx <= 10; dx++) {
-              const x = sampleX + dx;
-              const y = sampleY + dy;
-              if (x >= 0 && x < img.width && y >= 0 && y < img.height) {
-                const idx = (y * img.width + x) * 4;
-                const alpha = pixels[idx + 3];
-                if (alpha > 10) { // Non-transparent
-                  skinR += pixels[idx];
-                  skinG += pixels[idx + 1];
-                  skinB += pixels[idx + 2];
-                  skinSamples++;
-                }
-              }
-            }
-          }
-
-          if (skinSamples === 0) {
-            console.log("[RemoveShoulders] No skin reference found, returning original");
+          try {
+            detection = await faceapi.detectSingleFace(img, options).withFaceLandmarks();
+          } catch (err) {
+            console.error("[LandmarkMask] Face detection failed:", err);
             resolve(blob);
             return;
           }
 
-          // Average skin color
-          skinR = Math.floor(skinR / skinSamples);
-          skinG = Math.floor(skinG / skinSamples);
-          skinB = Math.floor(skinB / skinSamples);
-
-          console.log("[RemoveShoulders] Reference skin color: rgb(" + skinR + "," + skinG + "," + skinB + ")");
-
-          // Scan from bottom up, find where skin STOPS
-          let cropBottomY = img.height;
-
-          for (let y = img.height - 1; y >= 0; y--) {
-            let skinPixelsInRow = 0;
-            let totalPixelsInRow = 0;
-
-            // Check horizontal line
-            for (let x = 0; x < img.width; x++) {
-              const idx = (y * img.width + x) * 4;
-              const alpha = pixels[idx + 3];
-
-              if (alpha > 10) { // Non-transparent
-                totalPixelsInRow++;
-                const r = pixels[idx];
-                const g = pixels[idx + 1];
-                const b = pixels[idx + 2];
-
-                // Check if this pixel is skin-colored (within threshold)
-                const dist = colorDistance(r, g, b, skinR, skinG, skinB);
-                if (dist < 80) { // Threshold for skin similarity
-                  skinPixelsInRow++;
-                }
-              }
-            }
-
-            // If less than 40% of row is skin-colored, we've hit clothing/non-skin
-            if (totalPixelsInRow > 0 && (skinPixelsInRow / totalPixelsInRow) < 0.4) {
-              cropBottomY = y;
-              console.log("[RemoveShoulders] Skin boundary detected at Y:", y,
-                "skin%:", Math.floor((skinPixelsInRow / totalPixelsInRow) * 100));
-              break;
-            }
+          if (!detection) {
+            console.warn("[LandmarkMask] No face found on processed image, returning as-is");
+            resolve(blob);
+            return;
           }
 
-          // Find top of content
-          let topY = 0;
-          for (let y = 0; y < img.height; y++) {
-            for (let x = 0; x < img.width; x++) {
-              const idx = (y * img.width + x) * 4;
-              if (pixels[idx + 3] > 10) {
-                topY = y;
-                break;
-              }
-            }
-            if (topY > 0) break;
-          }
+          const landmarks = detection.landmarks;
+          const faceBox = detection.detection.box;
+          console.log("[LandmarkMask] Face detected on processed image:", faceBox);
 
-          const cropHeight = cropBottomY - topY;
-          console.log("[RemoveShoulders] Cropping from Y", topY, "to", cropBottomY, "height:", cropHeight);
-
-          // Create final canvas
           const canvas = document.createElement('canvas');
           canvas.width = img.width;
-          canvas.height = cropHeight;
+          canvas.height = img.height;
           const ctx = canvas.getContext('2d');
 
-          // Draw only skin area
-          ctx.drawImage(
-            tempCanvas,
-            0, topY, img.width, cropHeight,
-            0, 0, img.width, cropHeight
+          // Get jawline points (17 points defining lower face contour)
+          const jawline = landmarks.getJawOutline();
+
+          // Use RAW jawline points - no expansion to avoid including neck/shoulders
+          // Only add small horizontal padding for ears
+          const faceCenterX = faceBox.x + faceBox.width / 2;
+          const earPadding = 8;
+
+          const adjustedJaw = jawline.map((p, i) => {
+            let x = p.x;
+            let y = p.y;
+
+            const dx = p.x - faceCenterX;
+
+            // Horizontal padding for EARS (Upper jaw points 0-3 and 13-16)
+            // We expand these outwards to include ears
+            if (i <= 3 || i >= 13) {
+              x += Math.sign(dx) * 12; // Add 12px padding for ears
+            }
+
+            // Vertical padding for CHIN (points 6-10) to get neck start (V-Shape)
+            // Point 8 is the absolute bottom of chin
+            if (i >= 6 && i <= 10) {
+              // Gradual extension: more at center (8), less at sides (6, 10)
+              const intensity = 1 - (Math.abs(8 - i) / 3); // 1.0 at center, 0.33 at edges
+              y += 30 * intensity; // Slightly deeper V (was 25)
+            }
+
+            return { x, y };
+          });
+
+          // Estimate forehead/hairline position
+          const faceHeight = faceBox.height;
+          const foreheadY = faceBox.y - (faceHeight * 0.55); // Space for hair
+
+          console.log("[LandmarkMask] Jaw points:", adjustedJaw.length, "foreheadY:", foreheadY);
+
+          // Build face contour path: forehead arc + jawline
+          ctx.save();
+          ctx.beginPath();
+
+          // Start at jaw left, go up to forehead
+          ctx.moveTo(adjustedJaw[0].x, adjustedJaw[0].y);
+          ctx.lineTo(adjustedJaw[0].x - 15, foreheadY);
+
+          // Arc across forehead/hair  
+          ctx.quadraticCurveTo(
+            (adjustedJaw[0].x + adjustedJaw[16].x) / 2, foreheadY - 40,
+            adjustedJaw[16].x + 15, foreheadY
           );
 
-          console.log("[RemoveShoulders] ✅ Final size:", canvas.width, "x", canvas.height);
+          // Down to jaw right
+          ctx.lineTo(adjustedJaw[16].x, adjustedJaw[16].y);
 
-          // Convert back to blob
+          // Follow jawline from right to left (EXACT contour)
+          for (let i = 15; i >= 0; i--) {
+            ctx.lineTo(adjustedJaw[i].x, adjustedJaw[i].y);
+          }
+
+          ctx.closePath();
+          ctx.clip();
+
+          // Draw image (only inside face contour)
+          ctx.drawImage(img, 0, 0);
+          ctx.restore();
+
+          // Keep original 400x400 dimensions (no tight crop to avoid aspect ratio issues)
+          console.log("[LandmarkMask] ✅ Face mask applied:", canvas.width, "x", canvas.height);
+
           canvas.toBlob((newBlob) => {
             resolve(newBlob);
           }, 'image/png');
@@ -307,22 +340,18 @@ function App() {
     });
   };
 
-  const retake = () => {
-    setImgSrc(null);
-  };
-
   const cropToFace = async (imageSrc) => {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = async () => {
-        console.log("[Crop] Image loaded, detecting face WITH landmarks...");
+        console.log("[Crop] Image loaded, detecting face from captured image...");
 
-        // Detect face WITH landmarks (eyes, nose, mouth)
+        // Detect face FROM THE IMAGE, not from video
         const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 });
         let detection;
 
         try {
-          detection = await faceapi.detectSingleFace(img, options).withFaceLandmarks();
+          detection = await faceapi.detectSingleFace(img, options);
         } catch (err) {
           console.error("[Crop] Face detection failed:", err);
           console.log("[Crop] Returning original image");
@@ -331,89 +360,54 @@ function App() {
         }
 
         if (!detection) {
+          // No face found, return original
           console.warn("[Crop] No face found, returning original");
           resolve(imageSrc);
           return;
         }
 
-        const landmarks = detection.landmarks;
-        const box = detection.detection.box;
+        const box = detection.box;
+        const { x, y, width, height } = box;
+        console.log("[Crop] Face detected:", { x, y, width, height });
 
-        if (!landmarks) {
-          console.warn("[Crop] No landmarks found, using simple box crop");
-          // Fallback to simple crop
-          const { x, y, width, height } = box;
-          const canvas = document.createElement('canvas');
-          const size = Math.max(width, height) * 1.5;
-          canvas.width = 300;
-          canvas.height = 300;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, x - size / 4, y - size / 4, size, size, 0, 0, 300, 300);
-          resolve(canvas.toDataURL('image/png'));
-          return;
-        }
+        // Calculate crop area: 
+        // - Center on face
+        // - Include head + shoulders (expand face box)
+        // - Make it square for consistency
+        const expansionFactor = 2.0; // Include more area around face (2x the face width/height)
+        const cropSize = Math.max(width, height) * expansionFactor;
 
-        // Get eye positions
-        const leftEye = landmarks.getLeftEye();
-        const rightEye = landmarks.getRightEye();
+        // Center crop on face center
+        const faceCenterX = x + width / 2;
+        const faceCenterY = y + height / 2;
 
-        // Calculate eye center
-        const leftEyeCenter = {
-          x: leftEye.reduce((sum, p) => sum + p.x, 0) / leftEye.length,
-          y: leftEye.reduce((sum, p) => sum + p.y, 0) / leftEye.length
-        };
-        const rightEyeCenter = {
-          x: rightEye.reduce((sum, p) => sum + p.x, 0) / rightEye.length,
-          y: rightEye.reduce((sum, p) => sum + p.y, 0) / rightEye.length
-        };
+        let cropX = faceCenterX - cropSize / 2;
+        let cropY = faceCenterY - cropSize / 2;
 
-        const eyesCenterX = (leftEyeCenter.x + rightEyeCenter.x) / 2;
-        const eyesCenterY = (leftEyeCenter.y + rightEyeCenter.y) / 2;
+        // Ensure crop stays within image bounds
+        const imgWidth = img.width;
+        const imgHeight = img.height;
 
-        console.log("[Crop] Eyes center at:", eyesCenterX, eyesCenterY);
+        cropX = Math.max(0, Math.min(cropX, imgWidth - cropSize));
+        cropY = Math.max(0, Math.min(cropY, imgHeight - cropSize));
 
-        // Reference images show:
-        // - Eyes positioned in upper third (around 30-35% from top)
-        // - Tight crop around face
-        // - Output should be ~300x400px portrait
+        // Adjust if crop exceeds bounds
+        const actualCropSize = Math.min(cropSize, imgWidth - cropX, imgHeight - cropY);
 
-        const outputWidth = 300;
-        const outputHeight = 400;
-
-        // Position eyes at 30% from top
-        const eyesYPositionRatio = 0.30;
-
-        // Calculate crop area
-        // If eyes are at 30% from top of output (120px in 400px image)
-        // Then top of crop should be eyesCenterY - 120
-        const cropTop = eyesCenterY - (outputHeight * eyesYPositionRatio);
-        const cropBottom = cropTop + outputHeight;
-
-        // Center horizontally on eyes
-        const cropLeft = eyesCenterX - (outputWidth / 2);
-        const cropRight = cropLeft + outputWidth;
-
-        console.log("[Crop] Crop area:", {
-          left: cropLeft,
-          top: cropTop,
-          width: outputWidth,
-          height: outputHeight
-        });
-
-        // Create canvas
+        // Create canvas for cropped image
         const canvas = document.createElement('canvas');
-        canvas.width = outputWidth;
-        canvas.height = outputHeight;
+        canvas.width = 400; // Output size (square)
+        canvas.height = 400;
         const ctx = canvas.getContext('2d');
 
-        // Draw cropped portion
+        // Draw cropped portion, scaled to canvas
         ctx.drawImage(
           img,
-          cropLeft, cropTop, outputWidth, outputHeight, // Source
-          0, 0, outputWidth, outputHeight // Destination
+          cropX, cropY, actualCropSize, actualCropSize, // Source crop
+          0, 0, 400, 400 // Destination (full canvas)
         );
 
-        console.log("[Crop] ✅ Cropping complete, size:", outputWidth, "x", outputHeight);
+        console.log("[Crop] ✅ Cropping complete");
         resolve(canvas.toDataURL('image/png'));
       };
       img.onerror = (err) => {
@@ -424,61 +418,79 @@ function App() {
     });
   };
 
+
+
+
+
+
+
   const sendPhoto = async () => {
     if (!imgSrc) return;
 
-    // 1. Immediate Success Feedback to User
-    const rawImageToProcess = imgSrc; // Capture current image
-    setImgSrc(null); // Reset UI for next person immediately
-    alert("Enviado! Sua foto aparecerá em breve.");
+    console.log("[App] SendPhoto clicked");
 
-    // 2. Background Processing (Fire and Forget from UI perspective)
+    // 1. Immediate Success Feedback to User
+    const rawImageToProcess = imgSrc;
+    setImgSrc(null);
+
+    // Safety resets
+    isCapturingRef.current = false;
+    console.log("[DEBUG] sendPhoto: isCapturingRef set to false");
+
+    // Activate Cooldown 
+    const COOLDOWN_MS = 2000;
+    cooldownTimeRef.current = Date.now() + COOLDOWN_MS;
+    console.log(`[DEBUG] Cooldown applied until: ${cooldownTimeRef.current}`);
+
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
+
+    // 2. Background Processing
     (async () => {
+      isProcessingRef.current = true;
+      setUploading(true); // Disable controls
       try {
         console.log("[Upload] 📸 Starting background processing...");
 
-        // NEW: Crop to face FIRST
+        // Crop to face FIRST
         const croppedImage = await cropToFace(rawImageToProcess);
         console.log("[Upload] ✅ Face cropping complete");
 
         // Dynamic import
         console.log("[Upload] Loading background removal library...");
         const { removeBackground } = await import('@imgly/background-removal');
-        console.log("[Upload] Library loaded");
 
-        // Remove Background from CROPPED image
+        // Remove Background
         let blob;
         try {
-          console.log("[Upload] Removing background...");
           blob = await removeBackground(croppedImage, {
-            model: 'small', // Use small model for speed
-            progress: (key, current, total) => { /* quiet */ }
+            model: 'small',
+            progress: () => { }
           });
-          console.log("[Upload] Background removed");
 
-          // Step 3: Remove shoulders (crop bottom 25%)
-          blob = await removeShoulders(blob);
-          console.log("[Upload] ✅ Shoulders removed");
-
+          // Apply precise face mask
+          blob = await applyLandmarkMask(blob);
         } catch (bgError) {
-          console.error("[Upload] BG Removal failed, uploading cropped without BG removal", bgError);
+          console.error("[Upload] BG Removal failed", bgError);
           const res = await fetch(croppedImage);
           blob = await res.blob();
         }
 
         // Upload
-        console.log("[Upload] Uploading file...");
         const file = new File([blob], "visitor.png", { type: "image/png" });
         const formData = new FormData();
         formData.append('photo', file);
 
-        const response = await axios.post(`${SERVER_URL}/upload`, formData, {
+        await axios.post(`${SERVER_URL}/upload`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
-        console.log("[Upload] ✅ Upload completed successfully!", response.data);
+        console.log("[Upload] ✅ Upload completed!");
 
       } catch (error) {
-        console.error("[Upload] ❌ Background upload totally failed", error);
+        console.error("[Upload] ❌ Error", error);
+      } finally {
+        isProcessingRef.current = false;
+        setUploading(false); // Re-enable controls
       }
     })();
   };
@@ -486,6 +498,27 @@ function App() {
   return (
     <div className="booth-container">
       <h1 className="title">Dinossauros POA</h1>
+
+      {/* Success Overlay */}
+      {showSuccess && (
+        <div style={{
+          position: 'absolute',
+          top: '20%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(0, 255, 0, 0.8)',
+          color: 'white',
+          padding: '20px 40px',
+          borderRadius: '10px',
+          fontSize: '2rem',
+          fontWeight: 'bold',
+          zIndex: 9999,
+          pointerEvents: 'none', // click-through
+          animation: 'fadeInOut 3s ease-in-out'
+        }}>
+          ✅ Foto Enviada!
+        </div>
+      )}
 
       {!serverOnline && (
         <div style={{ background: 'orange', color: 'black', padding: '10px', marginBottom: '20px', borderRadius: '8px' }}>
@@ -499,19 +532,36 @@ function App() {
         </div>
       )}
 
-      <div className="camera-wrapper">
-        {imgSrc ? (
-          <img src={imgSrc} alt="captured" className="webcam" />
-        ) : (
-          <Webcam
-            audio={false}
-            ref={webcamRef}
-            screenshotFormat="image/jpeg"
+      <div className="camera-wrapper" style={{ display: uploading ? 'none' : 'block' }}>
+        {/* Always keep Webcam mounted to avoid re-init delays */}
+        <Webcam
+          audio={false}
+          ref={webcamRef}
+          screenshotFormat="image/jpeg"
+          className="webcam"
+          style={{
+            visibility: imgSrc ? 'hidden' : 'visible',
+            position: 'absolute',
+            top: 0,
+            left: 0
+          }}
+          videoConstraints={{
+            width: 500,
+            height: 500,
+            facingMode: "user"
+          }}
+        />
+
+        {imgSrc && (
+          <img
+            src={imgSrc}
+            alt="captured"
             className="webcam"
-            videoConstraints={{
-              width: 500,
-              height: 500,
-              facingMode: "user"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              zIndex: 10
             }}
           />
         )}
@@ -533,29 +583,63 @@ function App() {
         {countingDown && <div className="countdown">{countdown > 0 ? countdown : ''}</div>}
       </div>
 
-      <div className="controls">
-        {!imgSrc && !countingDown && (
-          <button
-            className="btn"
-            onClick={startCapture}
-            disabled={!isFaceValid && !loadingModels}
-            style={{ opacity: isFaceValid ? 1 : 0.5, cursor: isFaceValid ? 'pointer' : 'not-allowed' }}
-          >
-            Tirar Foto
-          </button>
-        )}
+      {uploading && (
+        <div className="processing-overlay" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '400px', // Match camera height
+          width: '100%'
+        }}>
+          <GooeyLoader
+            primaryColor="var(--primary)"
+            secondaryColor="#ffffff"
+          />
+          <h2 style={{ marginTop: '2rem', color: 'var(--light)', fontSize: '1.2rem', fontWeight: '300' }}>
+            Processando sua foto mágica...
+          </h2>
+          <p style={{ color: '#888', fontSize: '0.9rem' }}>Aguarde um momento</p>
+        </div>
+      )}
 
-        {imgSrc && (
-          <>
-            <button className="btn btn-secondary" onClick={retake} disabled={uploading}>
-              Tentar De Novo
-            </button>
-            <button className="btn" onClick={sendPhoto} disabled={uploading}>
-              {uploading ? 'Enviando...' : 'Enviar'}
-            </button>
-          </>
-        )}
-      </div>
+      {!uploading && (
+        <div className="controls">
+          {uploading ? (
+            <GooeyLoader
+              primaryColor="var(--primary)"
+              secondaryColor="#ffffff"
+            />
+          ) : (
+            <>
+              {!imgSrc && !countingDown && (
+                <button
+                  className="btn"
+                  onClick={startCapture}
+                  disabled={!isFaceValid && !loadingModels}
+                  style={{
+                    opacity: isFaceValid ? 1 : 0.5,
+                    cursor: isFaceValid ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  Tirar Foto
+                </button>
+              )}
+
+              {imgSrc && (
+                <>
+                  <button className="btn btn-secondary" onClick={retake}>
+                    Tentar De Novo
+                  </button>
+                  <button className="btn" onClick={sendPhoto}>
+                    Enviar
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <div className={`flash ${flash ? 'active' : ''}`} />
     </div>

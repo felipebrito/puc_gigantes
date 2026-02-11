@@ -28,28 +28,50 @@ export function SkeletonCharacter({
         texture.repeat.set(1.5, 2.5); // Tiling to show fabric detail
     });
 
+    const headRef = useRef();
+
     useFrame((state) => {
         const t = state.clock.getElapsedTime();
-        let freq = speed;
+        let freq = speed * 1.5; // Slightly faster frequency for natural feel
         let b = bounce;
         let s = stride;
 
-        if (walkStyle === "fast") { freq *= 1.3; b *= 1.2; s *= 1.2; }
-        if (walkStyle === "long") { freq *= 0.8; s *= 1.4; }
+        if (walkStyle === "fast") { freq *= 1.2; b *= 1.3; s *= 1.2; }
+        if (walkStyle === "long") { freq *= 0.8; s *= 1.5; }
 
         const cycle = t * freq;
 
         if (hipsRef.current) {
+            // Pelvic bounce and tilt
             hipsRef.current.position.y = Math.abs(Math.sin(cycle * 2)) * b;
-            hipsRef.current.rotation.x = 0.08;
-            hipsRef.current.rotation.z = Math.cos(cycle) * 0.015;
+            hipsRef.current.rotation.x = 0.1 + Math.sin(cycle * 2) * 0.02; // Slight forward lean oscillation
+            hipsRef.current.rotation.y = Math.sin(cycle) * 0.1; // Pelvic rotation
+            hipsRef.current.rotation.z = Math.cos(cycle) * 0.02;
         }
 
-        if (legLRef.current) legLRef.current.rotation.z = Math.sin(cycle) * s;
-        if (legRRef.current) legRRef.current.rotation.z = Math.sin(cycle + Math.PI) * s;
+        if (legLRef.current) {
+            legLRef.current.rotation.x = Math.sin(cycle) * s;
+            // Knee bend simulation (not perfect for 2D but adds weight)
+            legLRef.current.position.y = Math.max(0, Math.cos(cycle)) * 0.05;
+        }
+        if (legRRef.current) {
+            legRRef.current.rotation.x = Math.sin(cycle + Math.PI) * s;
+            legRRef.current.position.y = Math.max(0, Math.cos(cycle + Math.PI)) * 0.05;
+        }
 
-        if (armLRef.current) armLRef.current.rotation.z = Math.sin(cycle + Math.PI) * (s * 0.5);
-        if (armRRef.current) armRRef.current.rotation.z = Math.sin(cycle) * (s * 0.5);
+        if (armLRef.current) {
+            armLRef.current.rotation.x = Math.sin(cycle + Math.PI) * (s * 0.8);
+            armLRef.current.rotation.z = -0.1 + Math.sin(cycle * 2) * 0.02;
+        }
+        if (armRRef.current) {
+            armRRef.current.rotation.x = Math.sin(cycle) * (s * 0.8);
+            armRRef.current.rotation.z = 0.1 - Math.sin(cycle * 2) * 0.02;
+        }
+
+        if (headRef.current) {
+            headRef.current.rotation.y = -Math.sin(cycle) * 0.05; // Head looks slightly forward
+            headRef.current.position.y = 0.75 + Math.sin(cycle * 2 + 0.5) * 0.02; // Independent bob
+        }
     });
 
     const skinColor = '#FAD7A0';
@@ -58,51 +80,56 @@ export function SkeletonCharacter({
         <group position={position} scale={[scale, scale, 1]}>
             <group ref={hipsRef} position={[0, 0.8, 0]}>
 
-                {/* TORSO (Shirt) */}
-                <mesh position={[0, 0.45, 0]}>
-                    <planeGeometry args={[0.45, 0.7]} />
-                    <meshStandardMaterial map={clothTexture} side={THREE.DoubleSide} />
+                {/* TORSO - slightly back */}
+                <mesh position={[0, 0.45, -0.01]}>
+                    <planeGeometry args={[0.48, 0.7]} />
+                    <meshStandardMaterial map={clothTexture} transparent alphaTest={0.5} roughness={0.8} />
                 </mesh>
 
-                {/* NECK & HEAD (Face) */}
-                <group position={[0, 0.75, 0.05]}>
+                {/* HEAD & NECK */}
+                <group ref={headRef} position={[0, 0.75, 0]}>
                     {/* Neck */}
-                    <mesh position={[0, -0.05, -0.01]}>
+                    <mesh position={[0, -0.05, -0.02]}>
                         <planeGeometry args={[0.08, 0.15]} />
                         <meshStandardMaterial color={skinColor} />
                     </mesh>
-                    {/* Face */}
-                    <mesh position={[0, 0.22, 0.01]}>
+                    {/* Face - in front */}
+                    <mesh position={[0, 0.22, 0.05]}>
                         <planeGeometry args={[0.5, 0.5]} />
-                        <meshStandardMaterial map={faceTexture} transparent alphaTest={0.5} side={THREE.DoubleSide} />
+                        <meshStandardMaterial
+                            map={faceTexture}
+                            transparent
+                            alphaTest={0.5}
+                            depthWrite={false}
+                        />
                     </mesh>
                 </group>
 
-                {/* ARMS */}
-                <group ref={armLRef} position={[-0.23, 0.68, -0.02]}>
+                {/* ARMS - offset depth */}
+                <group ref={armLRef} position={[-0.25, 0.7, -0.03]}>
                     <mesh position={[0, -0.22, 0]}>
-                        <planeGeometry args={[0.1, 0.45]} />
-                        <meshStandardMaterial map={clothTexture} side={THREE.DoubleSide} />
+                        <planeGeometry args={[0.12, 0.48]} />
+                        <meshStandardMaterial map={clothTexture} roughness={0.8} />
                     </mesh>
                 </group>
-                <group ref={armRRef} position={[0.23, 0.68, 0.02]}>
+                <group ref={armRRef} position={[0.25, 0.7, 0.03]}>
                     <mesh position={[0, -0.22, 0]}>
-                        <planeGeometry args={[0.1, 0.45]} />
-                        <meshStandardMaterial map={clothTexture} side={THREE.DoubleSide} />
+                        <planeGeometry args={[0.12, 0.48]} />
+                        <meshStandardMaterial map={clothTexture} roughness={0.8} />
                     </mesh>
                 </group>
 
-                {/* LEGS - Offset X to prevent crossing at the center pivot */}
-                <group ref={legLRef} position={[-0.13, 0.05, -0.03]}>
+                {/* LEGS - offset depth */}
+                <group ref={legLRef} position={[-0.14, 0.05, -0.04]}>
                     <mesh position={[0, -0.4, 0]}>
-                        <planeGeometry args={[0.15, 0.9]} />
-                        <meshStandardMaterial map={clothTexture} side={THREE.DoubleSide} />
+                        <planeGeometry args={[0.18, 0.9]} />
+                        <meshStandardMaterial map={clothTexture} roughness={0.9} />
                     </mesh>
                 </group>
-                <group ref={legRRef} position={[0.13, 0.05, 0.03]}>
+                <group ref={legRRef} position={[0.14, 0.05, 0.04]}>
                     <mesh position={[0, -0.4, 0]}>
-                        <planeGeometry args={[0.15, 0.9]} />
-                        <meshStandardMaterial map={clothTexture} side={THREE.DoubleSide} />
+                        <planeGeometry args={[0.18, 0.9]} />
+                        <meshStandardMaterial map={clothTexture} roughness={0.9} />
                     </mesh>
                 </group>
             </group>

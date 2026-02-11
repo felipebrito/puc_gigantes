@@ -46,6 +46,7 @@ public class PhotoProvider : MonoBehaviour
                 string json = www.downloadHandler.text;
                 List<string> files = ParseSimpleJsonArray(json);
                 
+                // Only download NEW files (not already known)
                 foreach (string file in files)
                 {
                     if (!_knownFiles.Contains(file))
@@ -53,6 +54,20 @@ public class PhotoProvider : MonoBehaviour
                         _knownFiles.Add(file);
                         StartCoroutine(DownloadTexture(file));
                     }
+                }
+                
+                // Detect removed files
+                List<string> removedFiles = new List<string>();
+                foreach (string known in _knownFiles)
+                {
+                    if (!files.Contains(known)) removedFiles.Add(known);
+                }
+
+                foreach (string rem in removedFiles)
+                {
+                    _knownFiles.Remove(rem);
+                    if (spawner) spawner.RemoveFace(rem);
+                    Debug.Log($"[PhotoProvider] Removed face: {rem}");
                 }
             }
         }
@@ -83,6 +98,7 @@ public class PhotoProvider : MonoBehaviour
                 Texture2D texture = DownloadHandlerTexture.GetContent(www);
                 if (texture)
                 {
+                    texture.name = filename; // Set name so we can remove it later
                     Debug.Log($"[PhotoProvider] Successfully downloaded {filename} ({texture.width}x{texture.height})");
                     if (spawner) spawner.AddFace(texture);
                 }

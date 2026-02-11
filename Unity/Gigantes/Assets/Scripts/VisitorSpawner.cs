@@ -69,6 +69,17 @@ public class VisitorSpawner : MonoBehaviour
         }
     }
 
+    public void RemoveFace(string faceName)
+    {
+        var faceToRemove = _availableFaces.Find(f => f.name == faceName);
+        if (faceToRemove)
+        {
+            _availableFaces.Remove(faceToRemove);
+            // Optional: Destroy(faceToRemove) if we are sure no active visitor is using it
+            // For now, let GC handle it or keep it until scene reload
+        }
+    }
+
     void Update()
     {
         _timer += Time.deltaTime;

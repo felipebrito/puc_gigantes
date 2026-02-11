@@ -4,8 +4,7 @@ public class SceneSetup : MonoBehaviour
 {
     void Start()
     {
-        SetupGround();
-        SetupGrid();
+        // Grid and Ground removed - not needed in final scene
         SetupDino();
     }
 
@@ -80,11 +79,13 @@ public class SceneSetup : MonoBehaviour
         else
         {
             Debug.LogWarning("Dino model not found in Resources/Models/Dino");
-            // Placeholder
+            // Placeholder removed
+            /*
             GameObject p = GameObject.CreatePrimitive(PrimitiveType.Cube);
             p.transform.position = new Vector3(0, 0, -10);
             p.transform.localScale = new Vector3(2, 6, 2);
             p.GetComponent<Renderer>().material.color = Color.red;
+            */
         }
     }
 }

@@ -1,0 +1,15 @@
+{
+    "name": "puc-gigantes",
+    "version": "1.0.0",
+    "description": "Gigantes de Porto Alegre - Project Root",
+    "scripts": {
+        "server": "npm --prefix server run server",
+        "projection": "npm --prefix projection run server",
+        "booth": "npm --prefix booth run server",
+        "lab": "npm --prefix projection run lab",
+        "chroma": "npm --prefix projection run chroma",
+        "all": "npm run server & npm run projection & npm run booth"
+    },
+    "author": "",
+    "license": "ISC"
+}
