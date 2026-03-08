@@ -1,0 +1,14 @@
+.top-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 100;
+    display: flex;
+}
+
+.header-image {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}

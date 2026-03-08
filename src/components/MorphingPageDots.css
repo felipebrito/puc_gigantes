@@ -1,0 +1,49 @@
+.morphing-dots-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    padding: 1.5rem 0;
+}
+
+.morphing-chevron {
+    width: 2rem;
+    height: 2rem;
+    cursor: pointer;
+    color: var(--color-primary-blue);
+    transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+.morphing-chevron:hover {
+    color: #0033cc;
+}
+
+.morphing-chevron.disabled {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.morphing-dots-track {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.morphing-dot {
+    position: relative;
+    cursor: pointer;
+    background-color: rgba(0, 85, 255, 0.4); /* Muted primary blue */
+    flex-shrink: 0;
+}
+
+.morphing-dot.active {
+    background-color: var(--color-primary-blue);
+}
+
+.morphing-dot-ripple {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background-color: rgba(0, 85, 255, 0.3);
+    pointer-events: none;
+}
