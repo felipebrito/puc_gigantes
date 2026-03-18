@@ -1,0 +1,2 @@
+THIS IS THE PROJECTION APP FOLDER.
+If you see this, the server is correct.

@@ -1,0 +1,132 @@
+.view-silurian-double {
+    width: 1080px;
+    height: 1920px;
+    background-color: #ffffff;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.silurian-header-bar {
+    background-color: rgb(0, 110, 255);
+    height: 124px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    z-index: 20;
+}
+
+.silurian-header-text {
+    color: #ffffff;
+    font-family: 'Blender Pro Heavy', sans-serif;
+    font-weight: 900;
+    font-size: 50px;
+    letter-spacing: 0.15em;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.silurian-double-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Specimen Segments */
+.specimen-segment {
+    display: flex;
+    flex-direction: column;
+    height: 46%;
+}
+
+.silurian-image-section {
+    position: relative;
+    width: 100%;
+    height: 460px;
+    z-index: 5;
+    background-color: #0b0e21;
+}
+
+.barrabrancaInterna {
+    position: absolute;
+    top: 360px;
+    left: 520px;
+    object-fit: cover;
+    scale: 40%;
+}
+
+.silurian-specimen-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.silurian-name-overlay {
+    position: absolute;
+    top: 65%;
+    left: 95px;
+    transform: translateY(-50%);
+    z-index: 6;
+}
+
+.silurian-specimen-name {
+    font-family: 'Blender Pro Heavy', sans-serif;
+    font-weight: 900;
+    font-size: 75px;
+    letter-spacing: 0.1em;
+    color: #ffffff;
+    text-transform: uppercase;
+    margin: 0;
+
+}
+
+.silurian-specimen-subtitle {
+    font-family: 'Canva Sans Medium', sans-serif;
+    font-weight: 500;
+    font-size: 38px;
+    color: #ffffff;
+    margin: 50px 0 0 0;
+    width: 530px;
+}
+
+.silurian-description-box {
+    background-color: #ffffff;
+    padding: 20px 108px;
+    margin-top: -60px;
+    padding-top: 80px;
+    z-index: 4;
+}
+
+.silurian-description-text {
+    font-family: 'canva sans regular', sans-serif;
+    font-size: 36px;
+    color: #0b0e21;
+    line-height: 1.3em;
+    margin: 0;
+    width: 864px;
+    padding-top: 30px;
+    padding-bottom: 50px;
+}
+
+/* Stepped Line at bottom of each segment if desired, or just the last one */
+.silurian-stepped-line img {
+
+    width: 900px;
+
+}
+
+.silurian-footer-logos {
+    position: absolute;
+    bottom: 60px;
+    left: 108px;
+    right: 108px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.footer-logo {
+    height: 60px;
+}

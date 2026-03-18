@@ -1,0 +1,11 @@
+/* ExtinctionContentDevonian.css
+   Classe raiz: .view-extinction-content-devonian
+   IDs de elemento: dev-ext-*
+   Altere aqui sem afetar o Ordoviciano (ExtinctionContent.css)
+*/
+
+.view-extinction-content-devonian {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}

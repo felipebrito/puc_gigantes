@@ -1,0 +1,16 @@
+{
+  "name": "encoder_control",
+  "version": "1.0.0",
+  "description": "Esta é a pasta independente contendo os códigos de automação do ESP32 para o leitor do encoder rotativo.",
+  "main": "bridge.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "serialport": "^13.0.0"
+  }
+}

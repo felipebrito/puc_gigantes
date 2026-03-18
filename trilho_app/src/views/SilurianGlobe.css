@@ -1,0 +1,115 @@
+.view-silurian-globe {
+    width: 1080px;
+    height: 1920px;
+    position: relative;
+    background-color: #f4f4f4;
+    /* Canva stage background */
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Literal Header from Canva */
+.silurian-header-bar {
+    background-color: rgb(0, 110, 255);
+    /* #006eff */
+    height: 124px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    z-index: 10;
+}
+
+.silurian-header-text {
+    color: #ffffff;
+    font-family: 'Blender Pro Heavy', sans-serif;
+    font-weight: 900;
+    font-size: 50px;
+    letter-spacing: 0.15em;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.silurian-globe-content {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 60px;
+}
+
+/* Literal Globe Image Alignment */
+.globe-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 100px;
+}
+
+.globe-image {
+    width: 1080px;
+    height: auto;
+    object-fit: contain;
+}
+
+/* Literal Text Box Alignment and Color */
+.text-container {
+    width: 930px;
+    padding: 10px 20px 100px 20px;
+
+}
+
+.globe-description {
+    font-family: 'Canva Sans Regular', sans-serif;
+    font-size: 38.5px;
+    color: #0b0e21;
+    line-height: 47px;
+    text-align: left;
+    padding-bottom: 100px;
+    margin: 0;
+}
+
+/* Literal Blue Line */
+.globe-bottom-line {
+    width: 890px;
+    height: 4px;
+    background-color: rgb(0, 110, 255);
+    margin-top: 100px;
+}
+
+/* Caption abaixo da linha azul — usado no Devoniano (glob carboniféro) */
+.globe-image-caption {
+    width: 890px;
+    font-family: 'Blender Pro Book', sans-serif;
+    font-size: 28px;
+    color: #0b0e21;
+    line-height: 1;
+    margin-bottom: 20px;
+    letter-spacing: 0.01em;
+}
+
+.silurian-footer-logos {
+    position: absolute;
+    bottom: 120px;
+    left: 108px;
+    right: 108px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.footer-logo {
+    height: 80px;
+    object-fit: contain;
+}
+
+/* ==========================================================
+   OVERRIDES DO DEVONIANO
+   ========================================================== */
+
+/* Globe container — Devoniano sem margin-bottom */
+.view-silurian-globe.devoniano .globe-container {
+    margin-bottom: 0;
+}

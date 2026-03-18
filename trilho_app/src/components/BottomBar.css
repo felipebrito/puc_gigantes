@@ -1,0 +1,15 @@
+.bottom-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    z-index: 9999 !important;
+    display: flex;
+    pointer-events: none;
+}
+
+.footer-image {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}

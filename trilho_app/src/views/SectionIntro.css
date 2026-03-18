@@ -1,0 +1,163 @@
+.view-section-intro {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background-color: #0b0e21;
+}
+
+.section-bg-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+    opacity: 0.47;
+}
+
+.section-intro-content {
+    position: absolute;
+    top: 154px;
+    left: 70px;
+    width: 900px;
+    height: 1500px;
+    z-index: 10;
+}
+
+.section-html-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.section-intro-header {
+    position: absolute;
+    top: 40px;
+    /* Aligned with Canva reference */
+    left: 0;
+    width: 100%;
+    height: 150px;
+}
+
+.section-intro-period-label {
+    position: absolute;
+    top: 0px;
+    left: 4.5px;
+    font-size: 30px;
+    font-family: 'Blender Pro Book', sans-serif;
+    font-weight: 300;
+    letter-spacing: 7px;
+    color: var(--color-white);
+    margin: 0;
+}
+
+.section-intro-period-name {
+    position: absolute;
+    top: 36px;
+    left: 0px;
+    font-size: 60px;
+    font-family: 'Blender Pro Heavy', sans-serif;
+    font-weight: 900;
+    letter-spacing: 5px;
+    line-height: 1;
+    color: var(--color-white);
+    margin: 0;
+}
+
+.section-title-underline {
+    position: absolute;
+    top: 85px;
+    left: 0;
+    margin: 0;
+}
+
+.section-intro-body {
+    position: absolute;
+    top: 540px;
+    /* Matches Biodiversity Intro body position */
+    left: 3.1px;
+    width: 100%;
+}
+
+.section-intro-main-heading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 96px;
+    font-family: 'Blender Pro Heavy', sans-serif;
+    font-weight: 900;
+    line-height: 1.05;
+    color: var(--color-white);
+    margin: 0;
+    width: 900px;
+    text-transform: uppercase;
+}
+
+.section-body-top-line {
+    position: absolute;
+    top: 150px;
+    left: 0;
+    margin: 0;
+}
+
+.section-intro-main-text {
+    position: absolute;
+    top: 220px;
+    left: 0;
+    font-size: 48px;
+    font-family: 'Canva Sans Regular', sans-serif;
+    font-weight: 400;
+    line-height: 1.3;
+    width: 850px;
+    color: var(--color-white);
+    margin: 0;
+    letter-spacing: -0.5px;
+    white-space: pre-line;
+}
+
+.section-body-bottom-line {
+    position: absolute;
+    top: 900px;
+    left: 0;
+    margin: 0;
+}
+
+/* ==========================================================================
+   OVERRIDES DO DEVONIANO
+   Edite aqui para customizar o Devoniano sem afetar o Ordoviciano.
+   Seletor base: .view-section-intro.devoniano
+   Com seção:    .view-section-intro.devoniano.extincao
+   ========================================================================== */
+
+/* Extinção do Devoniano — texto com os 2 parágrafos */
+.view-section-intro.devoniano.extincao .section-intro-main-text {
+    font-size: 48px;
+    top: 122px;
+    line-height: 1.35;
+    white-space: normal; /* evita o espaço grande do \n\n */
+}
+
+/* Esconde a linha decorativa do meio — só na extinção do Devoniano */
+.view-section-intro.devoniano.extincao .section-body-top-line {
+    display: none;
+}
+
+/* Posição do corpo — extinção do Devoniano */
+.view-section-intro.devoniano.extincao .section-intro-body {
+    top: 240px;
+}
+
+/* Posição do corpo — E DEPOIS? do Devoniano */
+.view-section-intro.devoniano.pos_extincao .section-intro-body {
+    top: 370px;
+}
+
+/* Linha decorativa inferior — só na extinção do Devoniano */
+.view-section-intro.devoniano.extincao .section-body-bottom-line {
+    top: 1320px;
+}
+
+/* Adicione mais overrides do Devoniano abaixo conforme necessário */

@@ -1,16 +1,66 @@
-# React + Vite
+# Gigantes de Porto Alegre - Instalação Interativa
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Project for the interactive installation where visitors are projected into a prehistoric landscape of Porto Alegre alongside giant dinosaurs.
 
-Currently, two official plugins are available:
+## 🦖 Visão Geral
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+O sistema é composto por 3 partes principais que rodam em rede local (Offline-First):
 
-## React Compiler
+1.  **Server (`/server`)**: O "cérebro" da operação.
+    *   Node.js + Express + Socket.io.
+    *   Gerencia uploads de fotos e avisa a projeção quando um novo visitante chega.
+    *   Armazena as fotos na pasta `public/uploads`.
+2.  **Photo Booth (`/booth`)**: O "Totem".
+    *   Web App (React + Vite) rodando em tablet/celular.
+    *   **IA de Validação**: Usa `face-api.js` localmente para garantir que o rosto esteja centralizado e visível.
+    *   **Disparo por Sorriso**: Detecta automaticamente quando o usuário sorri para tirar a foto.
+    *   Recorta o rosto (Máscara SVG) e envia para o servidor.
+3.  **Projection (`/projection`)**: A "Tela".
+    *   Aplicação 3D (React Three Fiber) rodando no projetor/PC Gamer.
+    *   Renderiza o cenário, o dinossauro e os visitantes caminhando.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🚀 Como Rodar
 
-## Expanding the ESLint configuration
+### Pré-requisitos
+*   Node.js instalado.
+*   Conexão de rede entre os dispositivos (Wi-Fi Local ou Cabo).
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### 1. Iniciar o Servidor
+```bash
+cd server
+npm install
+node server.js
+```
+*   **Importante**: O servidor mostrará o **IP da Rede** (ex: `https://192.168.1.5:3000`). Anote esse IP.
+*   Acesse esse link no celular para testar a conexão. O navegador dará alerta de "Sua conexão não é particular" (Self-signed cert). Clique em **Avançado -> Ir para Site (Inseguro)**.
+
+### 2. Iniciar a Projeção (Tela Grande)
+```bash
+cd projection
+npm install
+npm run dev -- --host
+```
+*   Acesse `https://localhost:5174` (PC) ou via IP. Aceite o certificado inseguro.
+
+### 3. Iniciar o Photo Booth (Tablet/Celular)
+```bash
+cd booth
+npm install
+npm run dev -- --host
+```
+*   No celular, acesse `https://IP-DO-SEU-PC:5173`.
+*   **Aceite o Certificado**: Como estamos usando HTTPS local, o Chrome/Safari vai reclamar. Clique em "Visitar site mesmo assim".
+*   **Camera**: O navegador pedirá permissão de câmera. Aceite.
+
+## 🛠 Troubleshooting Mobile
+*   **Permissão de Câmera**: Só funciona em HTTPS ou Localhost. Por isso configuramos tudo para HTTPS.
+*   **Erro de Certificado**: É normal. Certificados locais não são assinados por autoridades globais.
+*   **Conexão**: Certifique-se que o celular e o PC estão na **mesma rede Wi-Fi**.
+
+## 📦 Estrutura de Pastas
+*   `/server`: Backend Node.js.
+*   `/booth`: Frontend React do Totem.
+*   `/projection`: Frontend React Three Fiber da Projeção.
+
+## 📜 Licença
+PUC-RS - Uso educacional/criativo.
