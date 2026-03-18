@@ -1,66 +1,55 @@
-# Gigantes de Porto Alegre - Instalação Interativa
+# PUC Gigantes - Trilho App (Exposição Interativa)
 
-Project for the interactive installation where visitors are projected into a prehistoric landscape of Porto Alegre alongside giant dinosaurs.
+Aplicativo interativo react + vite em formato Totem/Kiosk Vertical (1080x1920) desenvolvido para exibir a linhagem evolutiva, slides informativos sobre a fauna marinha do período Ordoviciano, Siluriano, o evento de Extinção em Massa e o período Devoniano.
 
-## 🦖 Visão Geral
+O App é desenhado estritamente para espelhar a apresentação criada pela PUC e pelo Museu de Ciências e Tecnologia.
 
-O sistema é composto por 3 partes principais que rodam em rede local (Offline-First):
+> **Importante:** Este repositório foi reestruturado para ser **exclusivo para a aplicação do Trilho**. Outros serviços (como o Photo Booth, Server e Projeções) foram separados.
 
-1.  **Server (`/server`)**: O "cérebro" da operação.
-    *   Node.js + Express + Socket.io.
-    *   Gerencia uploads de fotos e avisa a projeção quando um novo visitante chega.
-    *   Armazena as fotos na pasta `public/uploads`.
-2.  **Photo Booth (`/booth`)**: O "Totem".
-    *   Web App (React + Vite) rodando em tablet/celular.
-    *   **IA de Validação**: Usa `face-api.js` localmente para garantir que o rosto esteja centralizado e visível.
-    *   **Disparo por Sorriso**: Detecta automaticamente quando o usuário sorri para tirar a foto.
-    *   Recorta o rosto (Máscara SVG) e envia para o servidor.
-3.  **Projection (`/projection`)**: A "Tela".
-    *   Aplicação 3D (React Three Fiber) rodando no projetor/PC Gamer.
-    *   Renderiza o cenário, o dinossauro e os visitantes caminhando.
+## 🎛️ Sistema de Controle (Rotary Encoder ESP32)
 
-## 🚀 Como Rodar
+A instalação utiliza um moderno sistema de navegação física, garantindo interatividade de ponta para os visitantes, substituindo controles tradicionais (teclado/touch). A interface é montada para ser controlada de maneira orgânica por hardware direcional através de uma integração do React com um microcontrolador **ESP32** acoplado a um **Rotary Encoder**:
+
+*   **Girar para a Direita (Clockwise):** Simula a entrada `ArrowRight`, avançando de forma fluida para a tela ou slide seguinte.
+*   **Girar para a Esquerda (Counter-Clockwise):** Simula a entrada `ArrowLeft`, retornando à lâmina anterior da evolução pré-histórica.
+*   **Pressionar (Click/SW do Encoder):** Simula a entrada `Enter`, disparando a ação principal do slide (ou retornando ao menu principal dependendo do contexto interativo).
+
+Essa comunicação assegura uma experiência lúdica em que os visitantes controlam facilmente a linha do tempo geológica.
+
+### Pinagem Básica (ESP32):
+- **CLK:** Pino de Clock.
+- **DT:** Pino de Direção (Data).
+- **SW:** Pino do Switch (Botão/Click).
+- **GND/3V3:** Alimentação padrão e terra.
+
+## 🚀 Como Rodar o Aplicativo Principal
 
 ### Pré-requisitos
-*   Node.js instalado.
-*   Conexão de rede entre os dispositivos (Wi-Fi Local ou Cabo).
+*   Node.js (v16+) instalado.
 
-### 1. Iniciar o Servidor
+### 1. Iniciar o Servidor React
+O código da aplicação front-end está concentrado na pasta `trilho_app`:
+
 ```bash
-cd server
+cd trilho_app
 npm install
-node server.js
+npm run dev
 ```
-*   **Importante**: O servidor mostrará o **IP da Rede** (ex: `https://192.168.1.5:3000`). Anote esse IP.
-*   Acesse esse link no celular para testar a conexão. O navegador dará alerta de "Sua conexão não é particular" (Self-signed cert). Clique em **Avançado -> Ir para Site (Inseguro)**.
 
-### 2. Iniciar a Projeção (Tela Grande)
-```bash
-cd projection
-npm install
-npm run dev -- --host
-```
-*   Acesse `https://localhost:5174` (PC) ou via IP. Aceite o certificado inseguro.
+A aplicação será iniciada na porta padrão (`http://localhost:5173`). Configure a tela do monitor/totem para exibição vertical visando manter o design pixel-perfect (`1080x1920`).
 
-### 3. Iniciar o Photo Booth (Tablet/Celular)
-```bash
-cd booth
-npm install
-npm run dev -- --host
-```
-*   No celular, acesse `https://IP-DO-SEU-PC:5173`.
-*   **Aceite o Certificado**: Como estamos usando HTTPS local, o Chrome/Safari vai reclamar. Clique em "Visitar site mesmo assim".
-*   **Camera**: O navegador pedirá permissão de câmera. Aceite.
+## 🦖 Estrutura Interativa do Front-End
 
-## 🛠 Troubleshooting Mobile
-*   **Permissão de Câmera**: Só funciona em HTTPS ou Localhost. Por isso configuramos tudo para HTTPS.
-*   **Erro de Certificado**: É normal. Certificados locais não são assinados por autoridades globais.
-*   **Conexão**: Certifique-se que o celular e o PC estão na **mesma rede Wi-Fi**.
+A navegação baseia-se num sistema segmentado reativo de slides (`slidesData.js`) formando uma trilha:
+1. **Home/SectionIntro**: Capa e chamada interativa para a época a ser explorada.
+2. **Biodiversidade (`BiodiversityIntro`)**: Exposição geral sobre a vida marinha no período selecionado.
+3. **Catálogo de Espécimes (`SpecimenDetail`, `SilurianDoubleSpecimen`, etc.)**: Layout dedicado ao detalhamento 3D ou visual das espécies com descrições imersivas.
+4. **Eventos de Extinção (`ExtinctionIntro`, `ExtinctionContent`)**: Telas imersivas e dramáticas ilustrando como o período geológico encontrou seu fim antes de originar o próximo estágio de evolução.
 
-## 📦 Estrutura de Pastas
-*   `/server`: Backend Node.js.
-*   `/booth`: Frontend React do Totem.
-*   `/projection`: Frontend React Three Fiber da Projeção.
+## 📦 Tecnologias 
+- `React 18` + `Vite`
+- `Framer Motion` (Transições microscópicas e grandes aberturas)
+- `C/C++ Arduino Core` (Software microcontrolador ESP32)
 
-## 📜 Licença
-PUC-RS - Uso educacional/criativo.
+---
+*Produzido sob a estrutura de roteamento segmentário do React via estados por SlideIndex*
