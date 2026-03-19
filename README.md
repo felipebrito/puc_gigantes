@@ -1,6 +1,6 @@
 # PUC Gigantes - Trilho App (Exposição Interativa)
 
-Aplicativo interativo react + vite em formato Totem/Kiosk Vertical (1080x1920) desenvolvido para exibir a linhagem evolutiva, slides informativos sobre a fauna marinha do período Ordoviciano, Siluriano, o evento de Extinção em Massa e o período Devoniano.
+Aplicativo interativo react + vite em formato Totem/Kiosk Vertical (1080x1920) desenvolvido para exibir a linhagem evolutiva, slides informativos sobre a fauna marinha do período Ordoviciano, Siluriano, o evento de Extinção em Massa, o período Devoniano e o período Permiano.
 
 O App é desenhado estritamente para espelhar a apresentação criada pela PUC e pelo Museu de Ciências e Tecnologia.
 
@@ -21,6 +21,12 @@ Essa comunicação assegura uma experiência lúdica em que os visitantes contro
 - **DT:** Pino de Direção (Data).
 - **SW:** Pino do Switch (Botão/Click).
 - **GND/3V3:** Alimentação padrão e terra.
+
+### Atalhos de Teclado (Acesso Direto):
+Além do painel físico principal usando o Encoder, a aplicação conta com atalhos de teclado para pular diretamente para os inícios dos respectivos períodos:
+- **Tecla `1`:** Navega para o Início do Período Ordoviciano.
+- **Tecla `2`:** Navega para o Início do Período Devoniano.
+- **Tecla `3`:** Navega para o Início do Período Permiano.
 
 ## 🚀 Como Rodar o Aplicativo Principal
 
