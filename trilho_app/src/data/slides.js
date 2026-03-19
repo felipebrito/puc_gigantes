@@ -482,11 +482,196 @@ export const devonianoSlides = [
 ];
 
 // =============================================================================
+//  PERMIANO — Período 3
+// =============================================================================
+export const permianoSlides = [
+    {
+        type: 'home_permiano',
+        period: 'permiano',
+        section: 'home'
+    },
+    {
+        type: 'section_intro',
+        period: 'permiano',
+        section: 'biodiversidade',
+        title: 'A BIODIVERSIDADE DA ÉPOCA',
+        description: 'Conheça os representantes da fauna e da flora característicos desse momento geológico.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'biodiversidade',
+        id: 'archosaurus',
+        name: 'ARCHOSAURUS ROSSICUS',
+        subtitle: 'Arcossauriforme predador, com cerca de 1-3m de comprimento',
+        description: 'Possuiam membros curtos e postura semelhante a crocodilianos modernos. Foi um dos primeiros arcossauriformes descobertos.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'biodiversidade',
+        id: 'scutosaurus',
+        name: 'SCUTOSAURUS SP.',
+        subtitle: 'Réptil herbívoro, com cerca de 2m de comprimento',
+        description: 'Maior herbívoro de sua época, seu crânio em forma de capacete e seu corpo revestido por placas ósseas ofereciam uma forte defesa contra os predadores da época.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'biodiversidade',
+        id: 'dvinia',
+        name: 'DVINIA PRIMA',
+        subtitle: 'Cinodonte onívoro, com cerca de 50cm de comprimento',
+        description: 'Como todos os cinodontes, eles eram relacionados aos mamíferos. Grande parte de sua dieta era composta por plantas. Vivia próximo a corpos d’água, provavelmente em tocas.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'biodiversidade',
+        id: 'arctotypus',
+        name: 'ARCTOTYPUS SYLVAENSIS',
+        subtitle: 'Libélula gigante, com cerca de 30cm de envergadura de asa',
+        description: 'Depositava seus ovos em plantas similares as cavalinhas atuais. Viviam em regiões de floresta ou pantanosas, com água fresca, onde caçavam pequenos insetos e animais. Também serviam de alimento a outros animais.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'biodiversidade',
+        id: 'dicynodon',
+        name: 'DICYNODON SP.',
+        subtitle: 'Dicinodonte herbívoro, com aproximadamente 1.2m',
+        description: 'Foi o primeiro fóssil descrito da África e que mostrou evidências de características mamalianas em animais fora do grupo dos mamíferos. Além dos dois dentes canídeos, possuíam um tipo de bico, para ajudar a cortar a vegetação.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'biodiversidade',
+        id: 'glossopteris',
+        name: 'GLOSSOPTERIS SP.',
+        subtitle: 'Árvore, com porte de até 30m de altura',
+        description: 'As folhas desta gimnosperma semelhante a samambaia são alongadas, lembrando o formato de uma língua e com um veio central proeminente. Formavam grandes florestas durante este período.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'biodiversidade',
+        id: 'phyllotheca',
+        name: 'PHYLLOTHECA SP.',
+        subtitle: 'Cavalinha, com porte de até 3m de altura',
+        description: 'Era uma espécie de cavalinha primitiva que era bastante comum nas florestas glossopterídeas. Caracteriza-se por folhas finas dispostas em espiral, que partem da planta, deixando as folhas aglomeradas em discos.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'section_intro',
+        period: 'permiano',
+        section: 'extincao',
+        title: 'A EXTINÇÃO',
+        content: 'Movimentos tectônicos desencadearam eventos vulcânicos, levando a derrames maciços de lava basáltica que cobriram milhões de quilômetros, destruindo todo o ambiente que alcançaram. Segue um movimento de zoom in, mostrando o continente devastado.\n\nPode-se, então, observar que a grande atividade vulcânica resultou em uma forte emissão de gases envolvidos no efeito estufa, desencadeando um acentuado aquecimento global. Nos mares, os movimentos tectônicos liberaram grandes quantidades de gás metano preso no assoalho oceânico, tornando as águas oceânicas rapidamente anóxicas e eliminando a maioria da vida terrestre e aquática. Apenas alguns poucos animais sobreviveram e herdaram uma terra desolada para seguirem a vida.',
+        bgImage: '/assets/extinction_map.png'
+    },
+    {
+        type: 'silurian_double_specimen',
+        period: 'permiano',
+        section: 'extincao',
+        speciesLeft: {
+            name: 'CONTINENTE DEVASTADO',
+            subtitle: 'Representação de como deveria ter sido a aparência do continente durante a grande extinção',
+            description: '',
+            imageSrc: '/assets/placeholder.mp4'
+        },
+        speciesRight: {
+            name: 'DIVERSIFICAÇÃO',
+            subtitle: 'Representação de algumas espécies que sobreviveram a grande extinção e como se diversificaram posteriormente.',
+            description: '',
+            imageSrc: '/assets/placeholder.mp4'
+        }
+    },
+    {
+        type: 'section_intro',
+        period: 'permiano',
+        section: 'pos_extincao',
+        title: 'E DEPOIS?',
+        periodLabel: 'PERÍODO',
+        periodName: 'PERMIANO',
+        content: '',
+        bgImage: '/assets/extinction_map.png'
+    },
+    {
+        type: 'silurian_globe',
+        period: 'permiano',
+        section: 'pos_extincao',
+        title: 'E DEPOIS?',
+        content: 'Vista do globo terrestre com a disposição da massa continental correspondente à nova época retratada: Período Triássico. Após a extinção do final do Permiano, as temperaturas dispararam de 15ºC para 22ºC, o que fez com que as calotas polares desaparecessem por completo. No período Triássico, o ambiente se tornou mais árido e as chuva sazonais formavam rios, planícies de inundação e lagos. Os répteis foram duramente atingidos e apenas alguns representantes de pequeno porte sobreviveram. Os seres que dominavam a paisagem eram basicamente raros peixes, anfíbios primitivos aquáticos de cerca de 1m e alguns poucos dicinodontes.',
+        imageSrc: '/assets/mapa-depois.png',
+        imageCaption: 'Aparência do planeta Terra durante o início do período Triássico. Imagem de referência. A cor dos continentes no mapa preto e branco (continentes todos em branco) não representa gelo e os pontos roxos devem ser desconsiderados.',
+    },
+    {
+        type: 'silurian_specimen',
+        period: 'permiano',
+        section: 'pos_extincao',
+        id: 'benthosuchus',
+        name: 'BENTHOSUCHUS SP.',
+        subtitle: 'Anfíbio predador, com 1,80m de comprimento',
+        introText: 'As novas mudanças alteraram a biota, com novas espécies tornando-se abundantes (novo zoom para demonstrar o ambiente terrestre). Na representação do Triássico, sugerimos retratar os animais que seguem:',
+        description: 'Vivia em lagos, se alimentando de peixes e pequenos anfíbios como um predador de emboscada, com os olhos posicionados no topo da cabeça.',
+        imageSrc: '/assets/placeholder.png'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'pos_extincao',
+        id: 'lystrosaurus',
+        name: 'LYSTROSAURUS SP.',
+        subtitle: 'Dicinodonte herbívoro, entre 1m e 2.5m de comprimento',
+        description: 'Eram animais que poderiam apresentar hábito semiaquático. Alguns estudos indicam que cavavam tocas para se abrigar e se alimentavam de plantas resistentes a secas, como as cavalinhas primitivas.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'pos_extincao',
+        id: 'thrinaxodon',
+        name: 'THRINAXODON SP.',
+        subtitle: 'Cinodonte carnívoro, com aproximadamente 50cm de comprimento',
+        description: 'Se alimentava de pequenos insetos e répteis, vermes e outros cinodontes. Seu tamanho era próximo ao de um gato e apresenta mudanças importantes para a trajetória dos mamíferos, como modificações do crânio, na mandíbula, no dorso e cauda fina.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'pos_extincao',
+        id: 'procolophon',
+        name: 'PROCOLOPHON SP.',
+        subtitle: 'Réptil herbívoro, com até 40cm de comprimento',
+        description: 'Procolofonídeo que viviam em grupos, se abrigando em tocos ou buracos no solo. Pertencentes a um gênero que sobreviveu a extinção do permiano. Alguns estudos indicam que este animal também pode ter apresentado uma boa visão noturna.',
+        videoSrc: '/assets/placeholder.mp4'
+    },
+    {
+        type: 'single_species',
+        period: 'permiano',
+        section: 'pos_extincao',
+        id: 'voltziopsis',
+        name: 'VOLTZIOPSIS SP.',
+        subtitle: 'Árvore, com aproximadamente 5 a 10m de altitude',
+        description: 'Formavam florestas de baixa altitude, próximas a cursos d’água. São plantas que pertencem a linhagem ancestral das quais surgiram os grupos modernos de coníferas.',
+        videoSrc: '/assets/placeholder.mp4'
+    }
+];
+
+// =============================================================================
 //  EXPORT UNIFICADO
 // =============================================================================
-export const slidesData = [...ordovicianoSlides, ...devonianoSlides];
+export const slidesData = [...ordovicianoSlides, ...devonianoSlides, ...permianoSlides];
 
 export const periodStartIndex = {
     ordoviciano: 0,
     devoniano: ordovicianoSlides.length,
+    permiano: ordovicianoSlides.length + devonianoSlides.length,
 };

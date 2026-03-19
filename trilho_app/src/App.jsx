@@ -6,6 +6,7 @@ import BottomBar from './components/BottomBar'
 import Home from './views/Home'
 import HomeDevonian from './views/HomeDevonian'
 import SectionIntro from './views/SectionIntro'
+import HomePermian from './views/HomePermian'
 import SilurianGlobe from './views/SilurianGlobe'
 import SilurianSpecimen from './views/SilurianSpecimen'
 import SilurianDoubleSpecimen from './views/SilurianDoubleSpecimen'
@@ -78,6 +79,7 @@ function App() {
     const handler = (e) => {
       if (e.key === '1') { setSlideDirection('left');  setSlideIndex(periodStartIndex.ordoviciano); }
       if (e.key === '2') { setSlideDirection('right'); setSlideIndex(periodStartIndex.devoniano); }
+      if (e.key === '3') { setSlideDirection('right'); setSlideIndex(periodStartIndex.permiano); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -135,6 +137,7 @@ function App() {
 
             if      (type === 'home')                       ComponentToRender = <Home onNavigate={handleNavigate} />;
             else if (type === 'home_devonian')              ComponentToRender = <HomeDevonian onNavigate={absoluteNavigate} />;
+            else if (type === 'home_permiano')              ComponentToRender = <HomePermian onNavigate={absoluteNavigate} />;
             else if (type === 'section_intro')              ComponentToRender = <SectionIntro slideData={currentSlide} onNavigate={scopedNavigate} />;
             else if (type === 'extinction_content')         ComponentToRender = <ExtinctionContent slideData={currentSlide} onNavigate={scopedNavigate} />;
             else if (type === 'extinction_content_devonian') ComponentToRender = <ExtinctionContentDevonian slideData={currentSlide} onNavigate={scopedNavigate} />;
