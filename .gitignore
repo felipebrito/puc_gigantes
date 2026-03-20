@@ -1,16 +1,18 @@
-node_modules
-.DS_Store
-dist
-.env
-[Ll]ibrary/
-[Tt]emp/
-[Oo]bj/
-[Bb]uild/
-[Bb]uilds/
-[Ll]ogs/
-[Mm]emoryCaptures/
-booth/
-server/
-projection/
-automacoes/
-Unity/
+# Project Sub-folders node_modules and builds
+**/node_modules/
+**/dist/
+**/build/
+**/bin/
+**/obj/
+**/Temp/
+**/Library/
+**/uploads/
+**/.DS_Store
+
+# Re-allow projects but ignore their build/node outputs
+!booth/
+!server/
+!projection/
+!automacoes/
+!Unity/
+!trilho_app/
