@@ -9,10 +9,12 @@
 **/uploads/
 **/.DS_Store
 
-# Re-allow projects but ignore their build/node outputs
+# EXCLUDE Trilho App (Now a separate repository in trilho__app/)
+trilho_app/
+
+# INCLUDE Gigantes Project folders
 !booth/
 !server/
 !projection/
 !automacoes/
 !Unity/
-!trilho_app/
