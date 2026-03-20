@@ -8,6 +8,10 @@
 **/Library/
 **/uploads/
 **/.DS_Store
+**/Builds/
+**/UserSettings/
+**/Logs/
+**/MemoryCaptures/
 
 # EXCLUDE Trilho App (Now a separate repository in trilho__app/)
 trilho_app/
