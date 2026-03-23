@@ -238,11 +238,7 @@ app.post('/crop-test', express.json(), async (req, res) => {
     const jawline = detections.landmarks.getJawOutline();
     const box = detections.detection.box;
 
-    // 2. Remover fundo da imagem ORIGINAL (gera as melhores bordas)
-    console.log(`[CropTest] Removendo fundo da imagem original...`);
-    const noBgBlob = await removeBackground(inputPath, { output: { format: 'image/png', type: 'foreground' } });
-    const noBgBuffer = Buffer.from(await noBgBlob.arrayBuffer());
-    const noBgImg = await loadImage(noBgBuffer);
+    // 2. Detecção Facial (Usar imagem original para manter coordenadas)
 
     // 3. Estratégia "Neck Eraser" (Keep Head)
     const maskCanvas = createCanvas(img.width, img.height);
@@ -291,15 +287,25 @@ app.post('/crop-test', express.json(), async (req, res) => {
     mctx.filter = `blur(${req.body.blur || 12}px)`;
     mctx.fill();
 
-    const finalCanvas = createCanvas(img.width, img.height);
-    const fctx = finalCanvas.getContext('2d');
-    fctx.drawImage(noBgImg, 0, 0);
-    fctx.globalCompositeOperation = 'destination-in';
-    fctx.drawImage(maskCanvas, 0, 0);
+    // 3. Aplicar MÁSCARA no ORIGINAL para remover ombros PRIMEIRO (Garante alinhamento)
+    const croppedCanvas = createCanvas(img.width, img.height);
+    const cctx = croppedCanvas.getContext('2d');
+    cctx.drawImage(img, 0, 0);
+    cctx.globalCompositeOperation = 'destination-in';
+    cctx.drawImage(maskCanvas, 0, 0);
 
-    // 4. Trim final
-    let resultBuffer = finalCanvas.toBuffer('image/png');
+    // 4. Salvar temporário para garantir estabilidade no removeBackground
+    // JPEG é mais universalmente decodificado do que PNGs gerados pelo canvas em WASM
+    const tempTestPath = path.join(uploadDir, `test-temp.jpg`);
+    fs.writeFileSync(tempTestPath, croppedCanvas.toBuffer('image/jpeg', { quality: 0.95 }));
+
+    // 5. Remover Fundo com estabilidade via PATH
+    const finalBlob = await removeBackground(tempTestPath, { output: { format: 'image/png', type: 'foreground' } });
+    let resultBuffer = Buffer.from(await finalBlob.arrayBuffer());
     resultBuffer = await trimTransparentRows(resultBuffer);
+    
+    // Limpar temporário
+    if (fs.existsSync(tempTestPath)) fs.unlinkSync(tempTestPath);
 
     const outName = 'test-result.png';
     fs.writeFileSync(path.join(uploadDir, outName), resultBuffer);
@@ -326,9 +332,13 @@ app.get('/visitors', (req, res) => {
       return res.status(500).json({ error: 'Failed to scan directory' });
     }
 
+    const host = req.get('host');
+    const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const baseUrl = `${protocol}://${host}`;
+
     const fileUrls = files
-      .filter(file => file.startsWith('nobg-') && /\.(jpg|jpeg|png)$/i.test(file)) // Only processed images
-      .map(file => `https://${req.headers.host}/uploads/${file}`);
+      .filter(file => file.startsWith('nobg-') && /\.(png)$/i.test(file)) // Apenas PNGs processados (sem fundo)
+      .map(file => `${baseUrl}/uploads/${file}`);
 
     res.json(fileUrls);
   });
@@ -367,20 +377,13 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
       const box = detections.detection.box;
 
       // Parâmetros salvos como padrão Biométrico Pro (Zero Neck/Shoulder)
-      const topPad = 0.5, jawPad = 0.0, earPad = 0.0, neckPad = 0.8, blur = 12;
+      // Parâmetros verificados pelo usuário como ideais
+      const topPad = 0.5, jawPad = 0.0, earPad = 0.15, neckPad = 0.7, blur = 12;
 
-      // 2. Remover fundo da imagem ORIGINAL
-      const noBgBlob = await removeBackground(rawPath, { output: { format: 'image/png', type: 'foreground' } });
-      const noBgImg = await loadImage(Buffer.from(await noBgBlob.arrayBuffer()));
-
-      // 3. Criar a Máscara "Keep Head" (Neck Eraser)
+      // 2. Criar a Máscara "Shoulder Killer" (COORDENADAS ORIGINAIS)
       const maskCanvas = createCanvas(rawImg.width, rawImg.height);
       const mctx = maskCanvas.getContext('2d');
       
-      const offsetJaw = box.height * jawPad;
-      const oEar = box.width * earPad;
-      const oTaper = neckPad;
-
       const getPt = (i) => {
           const distFromCenter = Math.abs(i - 8) / 8;
           const oEar = box.width * earPad;
@@ -414,15 +417,32 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
       mctx.filter = `blur(${blur}px)`;
       mctx.fill();
 
-      const finalCanvas = createCanvas(rawImg.width, rawImg.height);
-      const fctx = finalCanvas.getContext('2d');
-      fctx.drawImage(noBgImg, 0, 0);
-      fctx.globalCompositeOperation = 'destination-in';
-      fctx.drawImage(maskCanvas, 0, 0);
+      // 3. Aplicar MÁSCARA no ORIGINAL para remover ombros PRIMEIRO
+      const croppedCanvas = createCanvas(rawImg.width, rawImg.height);
+      const cctx = croppedCanvas.getContext('2d');
+      cctx.drawImage(rawImg, 0, 0);
+      cctx.globalCompositeOperation = 'destination-in';
+      cctx.drawImage(maskCanvas, 0, 0);
 
-      // 4. Trim final
-      buffer = finalCanvas.toBuffer('image/png');
+      // 4. Salvar temporário como JPEG para máxima compatibilidade com WASM/imgly
+      const tempPath = path.join(uploadDir, `temp-${rawFileName.replace(/\.[^.]+$/, '.jpg')}`);
+      fs.writeFileSync(tempPath, croppedCanvas.toBuffer('image/jpeg', { quality: 0.95 }));
+
+      // 5. Remover Fundo com estabilidade via PATH
+      let noBgBlob;
+      try {
+        noBgBlob = await removeBackground(tempPath, { output: { format: 'image/png', type: 'foreground' } });
+      } catch (e) {
+        console.error(`[BackgroundRemoval] Falha no WASM com arquivo temporário. Tentando fallback...`, e);
+        // Fallback: Tenta com a imagem original se o crop falhou no decoder
+        noBgBlob = await removeBackground(rawPath, { output: { format: 'image/png', type: 'foreground' } });
+      }
+      
+      buffer = Buffer.from(await noBgBlob.arrayBuffer());
       buffer = await trimTransparentRows(buffer);
+
+      // Limpar temporário
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
     } else {
       console.warn(`[Processing] Nenhum rosto detectado em ${rawFileName}. Usando remoção de fundo padrão.`);
       const blob = await removeBackground(rawPath, { output: { format: 'image/png', type: 'foreground' } });
