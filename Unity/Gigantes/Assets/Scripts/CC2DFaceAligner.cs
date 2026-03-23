@@ -8,8 +8,8 @@ public class CC2DFaceAligner : MonoBehaviour
     
     [Header("Target Bone")]
     public string headBoneName = "Head"; // Or "Bone_Head"
-    public float faceScale = 4.74f; 
-    public Vector3 faceOffset = new Vector3(-0.15f, -0.38f, -0.2f);
+    public float faceScale = 3.9f; 
+    public Vector3 faceOffset = Vector3.zero;
     public Vector3 faceRotation = Vector3.zero;
 
     private Transform _headBone;
