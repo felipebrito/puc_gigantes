@@ -199,7 +199,7 @@ async function trimTransparentRows(buffer) {
   
   // Criar um quadrado de 1:1 baseado na maior dimensão + respiro
   const maxDim = Math.max(faceW, faceH);
-  const squareSize = maxDim * 1.35; // 35% de área total (respiro confortável)
+  const squareSize = maxDim * 1.25; // Garante que o rosto ocupe 80% da imagem (min 75% pedido)
   const scale = 400 / squareSize;
 
   const out = createCanvas(400, 400);
@@ -437,10 +437,9 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
       buffer = await trimTransparentRows(finalCanvas.toBuffer('image/png'));
 
     } else {
-      console.warn(`[Processing] Nenhum rosto detectado em ${rawFileName}. Usando remoção de fundo padrão.`);
-      const blob = await removeBackground(rawPath, { output: { format: 'image/png', type: 'foreground' } });
-      buffer = Buffer.from(await blob.arrayBuffer());
-      buffer = await trimTransparentRows(buffer);
+      console.warn(`[Processing] Nenhum rosto detectado em ${rawFileName}. ABORTANDO.`);
+      if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+      return res.status(400).send("Nenhum rosto detectado. Foto ignorada.");
     }
 
     const procFileName = `nobg-${rawFileName.replace(/\.[^.]+$/, '.png')}`;
@@ -455,12 +454,10 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
     });
 
   } catch (error) {
-    console.error(`[Processing] Falha no servidor do Recorte IA para ${rawFileName}, caindo para foto cru.`, error);
-    // Fallback: Transmite a imagem com fundo bruto em caso de erro pesado no tensor 
-    io.emit('new_visitor', {
-      id: Date.now(),
-      imageUrl: `https://${req.headers.host}/uploads/${rawFileName}`
-    });
+    console.error(`[Processing] Falha no servidor do Recorte IA para ${rawFileName}. ABORTANDO.`, error);
+    if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+    // Não emitimos nada para a Unity para ignorar a foto silenciosamente em caso de erro
+    res.status(500).send("Erro no processamento IA. Foto ignorada.");
   }
 });
 
