@@ -199,24 +199,21 @@ async function trimTransparentRows(buffer) {
   
   // Criar um quadrado de 1:1 baseado na maior dimensão + respiro
   const maxDim = Math.max(faceW, faceH);
-  const pad = Math.round(maxDim * 0.15); // 15% de margem extra (proporcional)
-  const squareSize = maxDim + pad * 2;
+  const squareSize = maxDim * 1.35; // 35% de área total (respiro confortável)
+  const scale = 400 / squareSize;
 
-  // Centro do rosto original
-  const centerX = left + faceW / 2;
-  const centerY = top + faceH / 2;
-
-  // Coordenadas de origem no canvas original (podem ser negativas ou fora de limites)
-  const srcX = centerX - squareSize / 2;
-  const srcY = centerY - squareSize / 2;
-
-  // Saída final fixa em 400x400
   const out = createCanvas(400, 400);
   const octx = out.getContext('2d');
-  
   octx.clearRect(0, 0, 400, 400);
-  // Desenhar parte do canvas original no destino 400x400
-  octx.drawImage(canvas, srcX, srcY, squareSize, squareSize, 0, 0, 400, 400);
+
+  // Calcular dimensões de destino (redimensionadas)
+  const destW = faceW * scale;
+  const destH = faceH * scale;
+  const destX = (400 - destW) / 2;
+  const destY = (400 - destH) / 2;
+
+  // Desenhar apenas a região do rosto, centralizada no destino 400x400
+  octx.drawImage(canvas, left, top, faceW, faceH, destX, destY, destW, destH);
 
   return out.toBuffer('image/png');
 }
