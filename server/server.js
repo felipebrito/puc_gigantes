@@ -454,7 +454,10 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
     });
 
     // Deletar o arquivo original BRUTO após processamento bem-sucedido
-    if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+    if (fs.existsSync(rawPath)) {
+      console.log(`[Cleanup] Deletando arquivo bruto: ${rawFileName}`);
+      fs.unlinkSync(rawPath);
+    }
 
   } catch (error) {
     console.error(`[Processing] Falha no servidor do Recorte IA para ${rawFileName}. ABORTANDO.`, error);
