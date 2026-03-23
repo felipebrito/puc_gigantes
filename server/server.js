@@ -6,7 +6,7 @@ if (!util.TextDecoder) util.TextDecoder = global.TextDecoder;
 const express = require('express');
 const https = require('https');
 const http = require('http');
-const ip = require('ip');
+const os = require('os');
 const { Server } = require("socket.io");
 const multer = require('multer');
 const path = require('path');
@@ -529,10 +529,22 @@ try {
 // Start Server
 const PORT = process.env.PORT || 3000;
 
+// Helper nativo para obter IP local sem dependências externas
+const getLocalIP = () => {
+  const interfaces = os.networkInterfaces();
+  for (const devName in interfaces) {
+    for (const iface of interfaces[devName]) {
+      if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+    }
+  }
+  return 'localhost';
+};
+const localIP = getLocalIP();
+
 httpsServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Server] 🚀 HTTPS rodando em https://${ip.address()}:${PORT} (Porta do Booth)`);
+  console.log(`[Server] 🚀 HTTPS rodando em https://${localIP}:${PORT} (Porta do Booth)`);
 });
 
 httpServer.listen(3001, '0.0.0.0', () => {
-  console.log(`[Server] 🔓 HTTP Fallback em http://${ip.address()}:3001 (Porta da Unity)`);
+  console.log(`[Server] 🔓 HTTP Fallback em http://${localIP}:3001 (Porta da Unity)`);
 });
