@@ -6,7 +6,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 export default defineConfig({
   plugins: [
     react(),
-    basicSsl()
+    // basicSsl() // Desativado para evitar problemas de Mixed Content e Certificado em ambiente Local
   ],
   server: {
     host: '0.0.0.0', // Expose explicitly to IPv4 network

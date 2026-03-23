@@ -6,9 +6,11 @@ import { GooeyLoader } from './GooeyLoader';
 import './BoothApp.css';
 
 // Server URL - Update this if running on a different machine
+// Server URL - Update this if running on a different machine
+// Usando a porta 3001 (HTTP) para evitar problemas de Certificado SSL em ambiente local
 const SERVER_URL = window.location.hostname === 'localhost' 
-  ? 'https://localhost:3000' 
-  : 'https://192.168.1.171:3000';
+  ? 'http://localhost:3001' 
+  : `http://${window.location.hostname}:3001`;
 
 function App() {
   const webcamRef = useRef(null);
