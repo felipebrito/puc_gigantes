@@ -5,6 +5,8 @@ if (!util.TextDecoder) util.TextDecoder = global.TextDecoder;
 
 const express = require('express');
 const https = require('https');
+const http = require('http');
+const ip = require('ip');
 const { Server } = require("socket.io");
 const multer = require('multer');
 const path = require('path');
@@ -134,14 +136,18 @@ const options = {
 };
 
 // Use HTTPS for internal APK
-const server = https.createServer(options, app);
+const httpsServer = https.createServer(options, app);
+const httpServer = http.createServer(app);
 
-const io = new Server(server, {
+const io = new Server(httpsServer, {
   cors: {
-    origin: "*", // Allow all origins for local LAN access
+    origin: "*", 
     methods: ["GET", "POST"]
   }
 });
+
+// Anexar IO ao servidor HTTP também para garantir atualizações na Unity
+io.attach(httpServer);
 
 // Middleware
 app.use(cors());
@@ -508,7 +514,11 @@ try {
 
 // Start Server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  // console.log(`listening on *:${PORT}`);
-  require('./print-ip');
+
+httpsServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`[Server] 🚀 HTTPS rodando em https://${ip.address()}:${PORT} (Porta do Booth)`);
+});
+
+httpServer.listen(3001, '0.0.0.0', () => {
+  console.log(`[Server] 🔓 HTTP Fallback em http://${ip.address()}:3001 (Porta da Unity)`);
 });

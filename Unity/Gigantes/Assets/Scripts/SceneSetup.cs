@@ -65,6 +65,8 @@ public class SceneSetup : MonoBehaviour
         // Unity imports .glb as a GameObject if the importer is active.
         // We can try loading it as a GameObject from Resources.
         
+        // No Unity, Resources.Load não usa extensão.
+        // Se Dino.glb estiver em Assets/Resources/Models/Dino.glb, o path é "Models/Dino"
         GameObject dinoPrefab = Resources.Load<GameObject>("Models/Dino");
         if (dinoPrefab)
         {

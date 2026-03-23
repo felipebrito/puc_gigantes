@@ -5,8 +5,8 @@ using System.Collections.Generic;
 
 public class PhotoProvider : MonoBehaviour
 {
-    public string serverUrl = "http://localhost:3000/visitors";
-    public string serverBase = "http://localhost:3000";
+    public string serverUrl = "http://localhost:3001/visitors";
+    public string serverBase = "http://localhost:3001";
     public float pollInterval = 1.5f;
     
     public VisitorSpawner spawner;
@@ -15,10 +15,6 @@ public class PhotoProvider : MonoBehaviour
 
     void Start()
     {
-        // Forçar protocolo HTTP mesmo que o Inspector tenha o valor antigo salvo com HTTPS
-        serverUrl = serverUrl.Replace("https://", "http://");
-        serverBase = serverBase.Replace("https://", "http://");
-
         if (!spawner) spawner = FindFirstObjectByType<VisitorSpawner>();
         StartCoroutine(PollRoutine());
     }
