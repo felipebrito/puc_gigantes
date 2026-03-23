@@ -450,8 +450,11 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
     // Broadcast para a Cenografia Virtual (Projection/Unity)
     io.emit('new_visitor', {
       id: Date.now(),
-      imageUrl: `https://${req.headers.host}/uploads/${procFileName}` 
+      imageUrl: `http://${req.headers.host.split(':')[0]}:3001/uploads/${procFileName}` 
     });
+
+    // Deletar o arquivo original BRUTO após processamento bem-sucedido
+    if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
 
   } catch (error) {
     console.error(`[Processing] Falha no servidor do Recorte IA para ${rawFileName}. ABORTANDO.`, error);
