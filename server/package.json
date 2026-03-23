@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "server": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "sed -i '' 's/new this.util.TextEncoder/new TextEncoder/g' node_modules/@vladmandic/face-api/dist/face-api*.js 2>/dev/null || true && sed -i '' 's/new this.util.TextDecoder/new TextDecoder/g' node_modules/@vladmandic/face-api/dist/face-api*.js 2>/dev/null || true"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +15,7 @@
   "type": "commonjs",
   "dependencies": {
     "@imgly/background-removal-node": "^1.4.5",
+    "@vladmandic/face-api": "^1.7.15",
     "canvas": "^3.2.1",
     "cors": "^2.8.6",
     "express": "^5.2.1",

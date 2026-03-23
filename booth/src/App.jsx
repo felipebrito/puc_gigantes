@@ -7,8 +7,8 @@ import './BoothApp.css';
 
 // Server URL - Update this if running on a different machine
 const SERVER_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:3000' 
-  : 'http://192.168.1.171:3000';
+  ? 'https://localhost:3000' 
+  : 'https://192.168.1.171:3000';
 
 function App() {
   const webcamRef = useRef(null);
@@ -27,6 +27,7 @@ function App() {
   const isCapturingRef = useRef(false);
   const cooldownTimeRef = useRef(0); // Timestamp when cooldown expires
   const isProcessingRef = useRef(false); // Track if we are crunching numbers
+  const uploadingRef = useRef(false); // Mirror of uploading state — avoids stale closure in setInterval
   const timerRef = useRef(null); // Track the active countdown interval
 
   // Check connection on load
@@ -150,7 +151,7 @@ function App() {
   // Capture functionality
   // Capture functionality
   const startCapture = () => {
-    if (isCapturingRef.current || isProcessingRef.current || uploading) {
+    if (isCapturingRef.current || isProcessingRef.current || uploadingRef.current) {
       console.warn("[DEBUG] startCapture blocked: Busy (Capturing/Processing/Uploading)");
       return;
     }
@@ -226,185 +227,65 @@ function App() {
     console.log(`[DEBUG] Cooldown applied until: ${cooldownTimeRef.current}`);
   };
 
-  // Customização Magistral: A Máscara varre as marcações faciais desenhando o contorno EXATO na parte de baixo (mandíbula/pescoço) e eliminando os ombros,
-  // MAS deixa 100% da metade superior (Cabelo, Teto, Parede) incólume (raw) para que a IA Remova Fundo maravilhosamente no Servidor do MAC
-  const applyLandmarkMask = async (blob) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = async () => {
-          console.log("[LandmarkMask] Processing smart half-mask:", img.width, "x", img.height);
-
-          const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.2 });
-          let detection;
-          try {
-            detection = await faceapi.detectSingleFace(img, options).withFaceLandmarks();
-          } catch (err) {
-            resolve(blob);
-            return;
-          }
-
-          if (!detection) {
-            resolve(blob);
-            return;
-          }
-
-          const landmarks = detection.landmarks;
-          const jawline = landmarks.getJawOutline();
-          const faceBox = detection.detection.box;
-          const faceCenterX = faceBox.x + faceBox.width / 2;
-
-          const adjustedJaw = jawline.map((p, i) => {
-            let x = p.x;
-            let y = p.y;
-            const dx = p.x - faceCenterX;
-            if (i <= 3 || i >= 13) x += Math.sign(dx) * 12; 
-            
-            // Adiciona um bom pedaço elegante de pescoço acompanhando o V do queixo
-            if (i >= 6 && i <= 10) {
-              const intensity = 1 - (Math.abs(8 - i) / 3); 
-              y += 40 * intensity; // Estende para baixo exatamente a curvatura natural
-            }
-            return { x, y };
-          });
-
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-
-          ctx.save();
-          ctx.beginPath();
-
-          // 1. COMEÇA O CORTE PRESERVANDO TODO O TOPO DA IMAGEM 
-          ctx.moveTo(0, 0);                     // Topo Esquerdo
-          ctx.lineTo(img.width, 0);             // Topo Direito
-          ctx.lineTo(img.width, adjustedJaw[16].y); // Desce a borda direita até a altura do ponto da mandíbula
-
-          // 2. CONECTA COM A MANDÍBULA e VARRE O CONTORNO INVERTIDO (Deletando todo o corpo abaixo da linha)
-          ctx.lineTo(adjustedJaw[16].x, adjustedJaw[16].y);
-          for (let i = 15; i >= 0; i--) {
-            ctx.lineTo(adjustedJaw[i].x, adjustedJaw[i].y);
-          }
-
-          // 3. SOBE A MANDÍBULA DE VOLTA PARA A BORDA ESQUERDA
-          ctx.lineTo(0, adjustedJaw[0].y);      
-          ctx.closePath();
-          ctx.clip(); // Cortamos cirurgicamente apenas abaixo do queixo!
-
-          // O corpo/tórax abaixo da mandíbula desaparece sob invisibilidade. O teto/cabelos ficam 100% puros para a IA.
-          ctx.drawImage(img, 0, 0);
-          ctx.restore();
-
-          canvas.toBlob((newBlob) => resolve(newBlob), 'image/png');
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(blob);
-    });
-  };
-
-  const cropToFace = async (imageSrc) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = async () => {
-        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
-        let detection;
-        try {
-          detection = await faceapi.detectSingleFace(img, options);
-        } catch (err) {
-          resolve(imageSrc);
-          return;
-        }
-
-        if (!detection) {
-          resolve(imageSrc);
-          return;
-        }
-
-        const box = detection.box;
-        const { x, y, width, height } = box;
-        
-        // Voltar ao aspecto clássico de 2.0 que não deforma/zooma o rosto
-        const expansionFactor = 2.0; 
-        const cropSize = Math.max(width, height) * expansionFactor;
-
-        let cropX = (x + width / 2) - cropSize / 2;
-        let cropY = (y + height / 2) - cropSize / 2;
-
-        cropX = Math.max(0, Math.min(cropX, img.width - cropSize));
-        cropY = Math.max(0, Math.min(cropY, img.height - cropSize));
-        const actualCropSize = Math.min(cropSize, img.width - cropX, img.height - cropY);
-
-        const canvas = document.createElement('canvas');
-        canvas.width = 400; 
-        canvas.height = 400;
-        const ctx = canvas.getContext('2d');
-
-        // Draw the full 2.0x crop (Pura, sem clearRect brutal de linha reta)
-        ctx.drawImage(
-          img,
-          cropX, cropY, actualCropSize, actualCropSize, 
-          0, 0, 400, 400
-        );
-
-        resolve(canvas.toDataURL('image/png'));
-      };
-      img.onerror = () => resolve(imageSrc);
-      img.src = imageSrc;
-    });
+  // Crop preciso: usa jawPoints[8] (ponta exata do queixo) em vez de max(jawPoints)
+  // que pode pegar pontos laterais da mandíbula mais baixos que o queixo real.
+  // Detecta o rosto no video (não na screenshot) para evitar problemas de EXIF/rotação
+  const detectFaceBox = async () => {
+    const video = webcamRef.current?.video;
+    if (!video) return null;
+    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
+    const det = await faceapi.detectSingleFace(video, options).withFaceLandmarks();
+    if (!det) return null;
+    const { x, y, width, height } = det.detection.box;
+    const jawPoints = det.landmarks.getJawOutline();
+    const chinY = Math.max(...jawPoints.map(p => p.y));
+    const vw = video.videoWidth, vh = video.videoHeight;
+    // Normaliza para 0-1 relativo ao video
+    return {
+      left:   Math.max(0, (x - width  * 0.5) / vw),
+      top:    Math.max(0, (y - height * 0.8) / vh),
+      right:  Math.min(1, (x + width  * 1.5) / vw),
+      bottom: Math.min(1, chinY / vh),
+      vw, vh
+    };
   };
 
   const sendPhoto = async () => {
     if (!imgSrc) return;
-
-    console.log("[App] SendPhoto clicked");
-
-    const rawImageToProcess = imgSrc;
+    const raw = imgSrc;
     setImgSrc(null);
-
     isCapturingRef.current = false;
-
-    const COOLDOWN_MS = 2000;
-    cooldownTimeRef.current = Date.now() + COOLDOWN_MS;
-
+    cooldownTimeRef.current = Date.now() + 2000;
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
 
     (async () => {
       isProcessingRef.current = true;
-      setUploading(true); 
+      uploadingRef.current = true;
+      setUploading(true);
       try {
-        console.log("[Upload] 📸 Starting background processing...");
-
-        const croppedImage = await cropToFace(rawImageToProcess);
-        
-        const res = await fetch(croppedImage);
-        let blob = await res.blob();
-
-        try {
-          blob = await applyLandmarkMask(blob);
-          console.log("[Upload] ✅ Half-open jawline mask applied successfully");
-        } catch(e) {
-          console.error("Landmark mask failed", e);
-        }
-
-        // Envia a foto cortada no Jawline (mas com teto intacto) pro @imgly no servidor!
-        const file = new File([blob], "visitor.png", { type: "image/png" });
+        console.log('[Upload] iniciando, detectando rosto...');
+        const faceBox = await detectFaceBox();
+        console.log('[Upload] faceBox:', faceBox);
+        console.log('[Upload] convertendo imagem...');
+        const byteString = atob(raw.split(',')[1]);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+        const blob = new Blob([ab], { type: 'image/jpeg' });
         const formData = new FormData();
-        formData.append('photo', file);
-
+        formData.append('photo', new File([blob], 'visitor.jpg', { type: 'image/jpeg' }));
+        if (faceBox) formData.append('faceBox', JSON.stringify(faceBox));
+        console.log('[Upload] enviando para servidor...');
         await axios.post(`${SERVER_URL}/upload`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
-        console.log("[Upload] ✅ Upload completed!");
-
-      } catch (error) {
-        console.error("[Upload] ❌ Error", error);
+      } catch (e) {
+        console.error('[Upload] ❌', e);
       } finally {
         isProcessingRef.current = false;
-        setUploading(false); // Re-enable controls
+        uploadingRef.current = false;
+        setUploading(false);
       }
     })();
   };
@@ -419,8 +300,6 @@ function App() {
 
   return (
     <div className="booth-container" onClick={goFullscreen}>
-      <h1 className="title">Dinossauros POA</h1>
-
       {/* Success Overlay */}
       {showSuccess && (
         <div style={{
@@ -460,6 +339,7 @@ function App() {
           audio={false}
           ref={webcamRef}
           screenshotFormat="image/jpeg"
+          mirrored={true}
           className="webcam"
           style={{
             visibility: imgSrc ? 'hidden' : 'visible',
@@ -468,8 +348,8 @@ function App() {
             left: 0
           }}
           videoConstraints={{
-            width: 500,
-            height: 500,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
             facingMode: "user"
           }}
         />
@@ -483,7 +363,8 @@ function App() {
               position: 'absolute',
               top: 0,
               left: 0,
-              zIndex: 10
+              zIndex: 10,
+              transform: 'scaleX(-1)' // Mirroring the frozen photo
             }}
           />
         )}
@@ -491,12 +372,7 @@ function App() {
         {/* Face Feedback Overlay */}
         {!imgSrc && !countingDown && (
           <div className="overlay-instruction" style={{
-            color: isFaceValid ? '#4caf50' : 'white',
-            fontWeight: 'bold',
-            textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-            background: 'rgba(0,0,0,0.3)',
-            padding: '5px 10px',
-            borderRadius: '5px'
+            color: isFaceValid ? '#afff4d' : 'white',
           }}>
             {faceFeedback}
           </div>
@@ -511,7 +387,7 @@ function App() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          height: '400px', // Match camera height
+          height: '100%', // Match camera height
           width: '100%'
         }}>
           <GooeyLoader

@@ -22,3 +22,12 @@ trilho_app/
 !projection/
 !automacoes/
 !Unity/
+
+# EXCLUDE ML Weights and Test Scripts
+server/weights/
+server/test*.js
+server/download_models.js
+server/public/
+.claude/
+vite
+booth@0.0.0

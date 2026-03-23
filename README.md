@@ -14,7 +14,10 @@ Aplicação React + Vite empacotada com Capacitor para rodar em modo Fullscreen 
 
 ### 2. 🖥️ Server (Node.js MacOS)
 Servidor central que processa o "trabalho pesado" da Inteligência Artificial.
-- **Background Removal:** Utiliza `@imgly/background-removal-node` (WASDM) para remover o fundo com precisão de fios de cabelo e contorno.
+- **Recorte Biométrico "Shoulder Killer":** Algoritmo proprietário que utiliza FaceAPI (68 landmarks) para isolar o rosto com precisão cirúrgica.
+    - **Zero Neck:** Recorte exato na linha da mandíbula para remover golas e pescoço.
+    - **V-Taper Suave:** Suavização quadrática que afunila os ombros mantendo o contorno facial natural.
+- **Background Removal:** Utiliza `@imgly/background-removal-node` (WASM) para remover o fundo preservando cabelos e detalhes.
 - **Socket.io Bridge:** Notifica instantaneamente a Unity e a Projeção sobre novos visitantes.
 - **Gerenciamento:** Serve como diretório de uploads e ponte de hardware para encoders/sensores.
 
