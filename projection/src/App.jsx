@@ -383,7 +383,7 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
             setHistory(prev => Array.from(new Set([...prev, ...files])));
             // Preload textures so first spawn has no flicker
             files.forEach(url => useTexture.preload(url));
-            setActivePool(files.slice(0, 8));
+            setActivePool(files.slice(0, 10));
             setApiError(false);
           }
         })
@@ -410,9 +410,9 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
 
   useEffect(() => {
     const rotatePool = () => {
-      if (history.length <= 1) return;
-      const shuffled = [...history].sort(() => 0.5 - Math.random());
-      setActivePool(shuffled.slice(0, 8));
+      if (history.length === 0) return;
+      // Mantém as 10 fotos mais recentes (history preserva ordem de chegada)
+      setActivePool(history.slice(-10));
     };
     const interval = setInterval(rotatePool, 15000);
     return () => clearInterval(interval);
@@ -455,9 +455,12 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
     if (visitorsRef.current.length < MAX_VISITORS &&
       activePoolRef.current.length > 0 &&
       now - lastSpawnRef.current >= interval) {
-      lastSpawnRef.current = now;
       const pool = activePoolRef.current;
-      const photo = pool[Math.floor(Math.random() * pool.length)];
+      const onScreen = new Set(visitorsRef.current.map(v => v.imageUrl));
+      const available = pool.filter(url => !onScreen.has(url));
+      if (available.length === 0) return; // todas as fotos do pool já estão na tela
+      lastSpawnRef.current = now;
+      const photo = available[Math.floor(Math.random() * available.length)];
       setVisitors(prev => [...prev, {
         id: Date.now() + Math.random(),
         imageUrl: photo,
@@ -475,13 +478,19 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
       const url = data.imageUrl;
       useTexture.preload(url); // preload antes de spawnar
       setHistory(h => [...h, url]);
-      setActivePool(prev => Array.from(new Set([...prev, url])).slice(0, 8));
-      // Booth → personagem entra imediatamente na cena
-      setVisitors(prev => [...prev, {
-        id: Date.now() + Math.random(),
-        imageUrl: url,
-        moveConfig: makeMoveConfig(),
-      }]);
+      // Pool = últimas 10 fotos (mais recente entra, mais antiga sai)
+      setActivePool(prev => {
+        const updated = Array.from(new Set([...prev, url]));
+        return updated.slice(-10);
+      });
+      // Só spawna se a foto ainda não estiver na tela
+      if (!visitorsRef.current.some(v => v.imageUrl === url)) {
+        setVisitors(prev => [...prev, {
+          id: Date.now() + Math.random(),
+          imageUrl: url,
+          moveConfig: makeMoveConfig(),
+        }]);
+      }
     };
     socket.on('new_visitor', handleNewVisitor);
     return () => socket.off('new_visitor', handleNewVisitor);
