@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [0.6.1] — 2026-04-02
+
+### Corrigido
+- **Oscilação de tamanho do rosto por distância** — `trimTransparentRows` aumentou o threshold de alpha de `10` para `50`, ignorando pixels semi-transparentes gerados pelo `blur: 15px` do Shoulder Killer. Antes, ombros próximos da câmera inflavam o bounding box → escala menor → rosto aparecia menor. Agora o bounding box considera apenas pixels com opacidade real (> 50).
+- **Ombro visível na imagem final** — corrigida abordagem intermediária que usava janela de crop fixa centrada no `box` da detecção, o que extrapolava a área mascarada pelo Shoulder Killer.
+
+### Adicionado
+- **`server/PIPELINE_CROP.md`** — documentação técnica completa do pipeline de recorte: fluxo, parâmetros críticos, armadilhas conhecidas e tabela de diagnóstico.
+
+---
+
 ## [0.6.0] — 2026-04-02
 
 ### Adicionado

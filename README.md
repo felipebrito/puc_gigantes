@@ -18,6 +18,7 @@ Servidor central que processa o "trabalho pesado" da Inteligência Artificial.
     - **Zero Neck:** Recorte exato na linha da mandíbula para remover golas e pescoço.
     - **V-Taper Suave:** Suavização quadrática que afunila os ombros mantendo o contorno facial natural.
 - **Background Removal:** Utiliza `@imgly/background-removal-node` (WASM) para remover o fundo preservando cabelos e detalhes.
+- **Normalização por distância:** Saída sempre 400×400 px com proporção invariante — rosto preenche ~95% independente da distância da foto. Ver [`server/PIPELINE_CROP.md`](server/PIPELINE_CROP.md) para detalhes técnicos.
 - **Socket.io Bridge:** Notifica instantaneamente a Unity e a Projeção sobre novos visitantes.
 - **Gerenciamento:** Serve como diretório de uploads e ponte de hardware para encoders/sensores.
 

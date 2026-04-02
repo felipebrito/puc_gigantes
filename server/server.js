@@ -183,7 +183,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// Trim transparent edges, add padding and white background
+// Trim e escala para 400x400, ignorando pixels semi-transparentes do blur
+// do Shoulder Killer (alpha < 50) que causavam oscilação por distância.
 async function trimTransparentRows(buffer) {
   const img = await loadImage(buffer);
   const { width, height } = img;
@@ -192,35 +193,30 @@ async function trimTransparentRows(buffer) {
   ctx.drawImage(img, 0, 0);
   const { data } = ctx.getImageData(0, 0, width, height);
 
+  // Threshold 50 (não 10): ignora pixels semi-transparentes do blur do Shoulder Killer
   const alpha = (x, y) => data[(y * width + x) * 4 + 3];
-  const isRowEmpty = (y) => { for (let x = 0; x < width; x++)  if (alpha(x, y) > 10) return false; return true; };
-  const isColEmpty = (x) => { for (let y = 0; y < height; y++) if (alpha(x, y) > 10) return false; return true; };
+  const isRowEmpty = (y) => { for (let x = 0; x < width; x++)  if (alpha(x, y) > 50) return false; return true; };
+  const isColEmpty = (x) => { for (let y = 0; y < height; y++) if (alpha(x, y) > 50) return false; return true; };
 
-  let top = 0;    while (top < height    && isRowEmpty(top))    top++;
+  let top = 0;         while (top < height    && isRowEmpty(top))    top++;
   let bottom = height - 1; while (bottom > top   && isRowEmpty(bottom)) bottom--;
-  let left = 0;   while (left < width    && isColEmpty(left))   left++;
-  let right = width - 1;  while (right > left    && isColEmpty(right))  right--;
+  let left = 0;        while (left < width     && isColEmpty(left))   left++;
+  let right = width - 1;   while (right > left   && isColEmpty(right))  right--;
 
   if (top >= bottom || left >= right) return buffer;
 
   const faceW = right - left + 1;
   const faceH = bottom - top + 1;
-  
-  // Criar um quadrado de 1:1 baseado na maior dimensão + respiro
-  const maxDim = Math.max(faceW, faceH);
-  const squareSize = maxDim * 1.25; // Garante que o rosto ocupe 80% da imagem (min 75% pedido)
-  // 3. Criar resultado 400x400 com o rosto fitado (ESTILO ORIGINAL 100%)
+
   const out = createCanvas(400, 400);
   const octx = out.getContext('2d');
   octx.clearRect(0, 0, 400, 400);
 
-  // Escala para preencher 95% dos 400x400 (Deixa um respiro profissional no topo)
   const scale = (400 / Math.max(faceW, faceH)) * 0.95;
-  
   const destW = faceW * scale;
   const destH = faceH * scale;
   const destX = (400 - destW) / 2;
-  const destY = 400 - destH; // ALINHAMENTO NA BASE (Importante!)
+  const destY = 400 - destH;
 
   octx.drawImage(canvas, left, top, faceW, faceH, destX, destY, destW, destH);
 
