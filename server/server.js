@@ -183,9 +183,10 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// Trim e escala para 400x400, ignorando pixels semi-transparentes do blur
-// do Shoulder Killer (alpha < 50) que causavam oscilação por distância.
-async function trimTransparentRows(buffer) {
+// Trim e escala para 400x400.
+// box = detecção faceapi — limita a varredura à região do rosto para ignorar
+// pixels artefato da remoção de fundo (alpha > 50 mas longe do rosto).
+async function trimTransparentRows(buffer, box) {
   const img = await loadImage(buffer);
   const { width, height } = img;
   const canvas = createCanvas(width, height);
@@ -193,15 +194,21 @@ async function trimTransparentRows(buffer) {
   ctx.drawImage(img, 0, 0);
   const { data } = ctx.getImageData(0, 0, width, height);
 
-  // Threshold 50 (não 10): ignora pixels semi-transparentes do blur do Shoulder Killer
-  const alpha = (x, y) => data[(y * width + x) * 4 + 3];
-  const isRowEmpty = (y) => { for (let x = 0; x < width; x++)  if (alpha(x, y) > 50) return false; return true; };
-  const isColEmpty = (x) => { for (let y = 0; y < height; y++) if (alpha(x, y) > 50) return false; return true; };
+  // Região de busca: expansão generosa do box da detecção.
+  // Qualquer pixel fora desta janela é artefato e deve ser ignorado.
+  const srTop    = Math.max(0,          Math.round(box.y - box.height * 0.7));
+  const srBottom = Math.min(height - 1, Math.round(box.y + box.height * 1.1));
+  const srLeft   = Math.max(0,          Math.round(box.x - box.width  * 0.35));
+  const srRight  = Math.min(width - 1,  Math.round(box.x + box.width  * 1.35));
 
-  let top = 0;         while (top < height    && isRowEmpty(top))    top++;
-  let bottom = height - 1; while (bottom > top   && isRowEmpty(bottom)) bottom--;
-  let left = 0;        while (left < width     && isColEmpty(left))   left++;
-  let right = width - 1;   while (right > left   && isColEmpty(right))  right--;
+  const alpha = (x, y) => data[(y * width + x) * 4 + 3];
+  const isRowEmpty = (y) => { for (let x = srLeft; x <= srRight; x++)  if (alpha(x, y) > 50) return false; return true; };
+  const isColEmpty = (x) => { for (let y = srTop;  y <= srBottom; y++) if (alpha(x, y) > 50) return false; return true; };
+
+  let top    = srTop;    while (top < srBottom  && isRowEmpty(top))    top++;
+  let bottom = srBottom; while (bottom > top    && isRowEmpty(bottom)) bottom--;
+  let left   = srLeft;   while (left < srRight  && isColEmpty(left))   left++;
+  let right  = srRight;  while (right > left    && isColEmpty(right))  right--;
 
   if (top >= bottom || left >= right) return buffer;
 
@@ -524,7 +531,7 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
       fctx.drawImage(aiMaskImg, 0, 0);
       fctx.drawImage(maskCanvas, 0, 0);
       
-      buffer = await trimTransparentRows(finalCanvas.toBuffer('image/png'));
+      buffer = await trimTransparentRows(finalCanvas.toBuffer('image/png'), box);
     } else {
       console.warn(`[Processing] Nenhum rosto detectado.`);
       if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
