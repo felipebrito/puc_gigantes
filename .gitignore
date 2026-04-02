@@ -27,7 +27,7 @@ trilho_app/
 server/weights/
 server/test*.js
 server/download_models.js
-server/public/
+# server/public/uploads/ is already covered by **/uploads/ above
 .claude/
 vite
 booth@0.0.0

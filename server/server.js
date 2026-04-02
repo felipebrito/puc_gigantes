@@ -336,6 +336,43 @@ app.post('/crop-test', express.json(), async (req, res) => {
   }
 });
 
+// Admin: lista imagens com metadados
+app.get('/admin-images', (req, res) => {
+  fs.readdir(uploadDir, (err, files) => {
+    if (err) return res.status(500).json({ error: 'Falha ao escanear diretório' });
+
+    const images = files
+      .filter(f => f.startsWith('nobg-') && /\.png$/i.test(f))
+      .map(f => {
+        const filePath = path.join(uploadDir, f);
+        try {
+          const stat = fs.statSync(filePath);
+          return { name: f, url: `/uploads/${f}`, size: stat.size, createdAt: stat.mtime };
+        } catch { return null; }
+      })
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json(images);
+  });
+});
+
+// Admin: deletar imagem
+app.delete('/uploads/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename); // Previne path traversal
+  if (!filename.startsWith('nobg-') || !/\.png$/i.test(filename)) {
+    return res.status(403).json({ error: 'Somente imagens processadas podem ser deletadas' });
+  }
+  const filePath = path.join(uploadDir, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Arquivo não encontrado' });
+
+  fs.unlink(filePath, (err) => {
+    if (err) return res.status(500).json({ error: 'Falha ao deletar arquivo' });
+    console.log(`[Admin] 🗑️  Deletado: ${filename}`);
+    res.json({ success: true });
+  });
+});
+
 // List all Visitors API
 app.get('/visitors', (req, res) => {
   console.log(`[API] Requested visitors list from: ${req.headers.origin || req.ip}`);

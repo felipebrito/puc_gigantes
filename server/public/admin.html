@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel de Imagens — Gigantes de POA</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            zinc: {
+              925: '#111113',
+            }
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.3s ease-out',
+            'slide-up': 'slideUp 0.3s ease-out',
+            'scale-in': 'scaleIn 0.2s ease-out',
+            'shimmer': 'shimmer 1.5s infinite',
+            'toast-in': 'toastIn 0.35s cubic-bezier(0.34,1.56,0.64,1)',
+            'toast-out': 'toastOut 0.25s ease-in forwards',
+          },
+          keyframes: {
+            fadeIn: { from: { opacity: 0 }, to: { opacity: 1 } },
+            slideUp: { from: { opacity: 0, transform: 'translateY(12px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+            scaleIn: { from: { opacity: 0, transform: 'scale(0.95)' }, to: { opacity: 1, transform: 'scale(1)' } },
+            shimmer: { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } },
+            toastIn: { from: { opacity: 0, transform: 'translateX(100%) scale(0.9)' }, to: { opacity: 1, transform: 'translateX(0) scale(1)' } },
+            toastOut: { from: { opacity: 1, transform: 'translateX(0) scale(1)' }, to: { opacity: 0, transform: 'translateX(100%) scale(0.9)' } },
+          }
+        }
+      }
+    }
+  </script>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+
+    body { background: #09090b; }
+
+    .card-glass {
+      background: rgba(24,24,27,0.8);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(63,63,70,0.6);
+    }
+
+    .img-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .img-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+    .img-card.selected {
+      border-color: #f97316 !important;
+      box-shadow: 0 0 0 2px rgba(249,115,22,0.3);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #ea580c, #f97316);
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .btn-primary:hover { opacity: 0.9; transform: scale(1.02); }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #b91c1c, #ef4444);
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .btn-danger:hover { opacity: 0.9; transform: scale(1.02); }
+
+    .skeleton {
+      background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+
+    .drop-zone {
+      border: 2px dashed #3f3f46;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone.active {
+      border-color: #f97316;
+      background: rgba(249,115,22,0.05);
+    }
+
+    .stat-card {
+      background: linear-gradient(135deg, rgba(24,24,27,0.9), rgba(39,39,42,0.6));
+      border: 1px solid rgba(63,63,70,0.5);
+    }
+
+    .header-glow {
+      text-shadow: 0 0 40px rgba(249,115,22,0.3);
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #18181b; }
+    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+    .checkbox-custom {
+      appearance: none;
+      width: 16px; height: 16px;
+      border: 2px solid #52525b;
+      border-radius: 4px;
+      background: transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .checkbox-custom:checked {
+      background: #f97316;
+      border-color: #f97316;
+    }
+    .checkbox-custom:checked::after {
+      content: '';
+      position: absolute;
+      top: 1px; left: 4px;
+      width: 5px; height: 8px;
+      border: 2px solid white;
+      border-top: none; border-left: none;
+      transform: rotate(45deg);
+    }
+
+    .new-badge {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .delete-btn {
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .img-card:hover .delete-btn { opacity: 1; }
+
+    @keyframes deleteAnim {
+      to { opacity: 0; transform: scale(0.85); }
+    }
+    .deleting { animation: deleteAnim 0.25s ease-out forwards; }
+  </style>
+</head>
+
+<body class="min-h-screen text-zinc-100 font-sans antialiased" x-data="adminApp()" x-init="init()" x-cloak>
+
+  <!-- Toast Notifications -->
+  <div class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none" style="width:320px">
+    <template x-for="toast in toasts" :key="toast.id">
+      <div
+        class="pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl text-sm font-medium"
+        :class="{
+          'bg-zinc-800 border border-zinc-700 text-zinc-100': toast.type === 'info',
+          'bg-green-950 border border-green-800 text-green-300': toast.type === 'success',
+          'bg-red-950 border border-red-800 text-red-300': toast.type === 'error',
+          'animate-toast-in': !toast.leaving,
+          'animate-toast-out': toast.leaving
+        }"
+      >
+        <span x-text="toast.type === 'success' ? '✓' : toast.type === 'error' ? '✕' : 'ℹ'" class="text-base font-bold shrink-0"></span>
+        <span x-text="toast.message" class="flex-1"></span>
+        <button @click="removeToast(toast.id)" class="text-current opacity-50 hover:opacity-100 shrink-0">✕</button>
+      </div>
+    </template>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div
+    x-show="deleteTarget !== null"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+    @click.self="deleteTarget = null"
+  >
+    <div
+      x-show="deleteTarget !== null"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0 scale-95"
+      x-transition:enter-end="opacity-100 scale-100"
+      class="card-glass rounded-2xl p-6 w-full max-w-sm mx-4 animate-scale-in"
+    >
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-red-950 border border-red-800 flex items-center justify-center text-red-400 text-lg">🗑</div>
+        <div>
+          <h3 class="font-semibold text-zinc-100">Confirmar exclusão</h3>
+          <p class="text-sm text-zinc-400" x-text="deleteTarget === 'bulk' ? `Deletar ${selected.size} imagens selecionadas?` : 'Deletar esta imagem permanentemente?'"></p>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-4">
+        <button @click="deleteTarget = null" class="flex-1 px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">Cancelar</button>
+        <button @click="confirmDelete()" class="flex-1 px-4 py-2.5 rounded-xl btn-danger text-white text-sm font-medium">Deletar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Modal -->
+  <div
+    x-show="showUpload"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    class="fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+    @click.self="showUpload = false"
+  >
+    <div
+      x-show="showUpload"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0 scale-95"
+      x-transition:enter-end="opacity-100 scale-100"
+      class="card-glass rounded-2xl p-6 w-full max-w-lg mx-4"
+    >
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="font-semibold text-zinc-100 text-lg">Adicionar Imagem</h3>
+        <button @click="showUpload = false" class="text-zinc-500 hover:text-zinc-300 transition-colors text-xl">✕</button>
+      </div>
+
+      <div
+        class="drop-zone rounded-xl p-10 text-center cursor-pointer"
+        :class="{ active: dragOver }"
+        @dragover.prevent="dragOver = true"
+        @dragleave.prevent="dragOver = false"
+        @drop.prevent="handleDrop($event)"
+        @click="$refs.fileInput.click()"
+      >
+        <div class="text-4xl mb-3" x-text="dragOver ? '📂' : '🖼'"></div>
+        <p class="text-zinc-300 font-medium">Arraste imagens ou clique para selecionar</p>
+        <p class="text-zinc-500 text-sm mt-1">PNG, JPG — já processadas (nobg-*.png) ou brutas</p>
+        <input x-ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="handleFileInput($event)" />
+      </div>
+
+      <div x-show="uploadQueue.length > 0" class="mt-4 space-y-2">
+        <template x-for="item in uploadQueue" :key="item.name">
+          <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-800">
+            <div class="text-base">📄</div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm text-zinc-200 truncate" x-text="item.name"></p>
+              <div class="mt-1 h-1 rounded-full bg-zinc-700 overflow-hidden">
+                <div class="h-full rounded-full bg-orange-500 transition-all duration-300" :style="`width: ${item.progress}%`"></div>
+              </div>
+            </div>
+            <span class="text-xs text-zinc-500" x-text="item.progress < 100 ? item.progress + '%' : '✓'"></span>
+          </div>
+        </template>
+      </div>
+
+      <div class="flex gap-2 mt-4">
+        <button @click="showUpload = false" class="flex-1 px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+
+    <!-- Header -->
+    <div class="mb-8 animate-fade-in">
+      <div class="flex items-center gap-3 mb-1">
+        <span class="text-3xl">🦕</span>
+        <h1 class="text-2xl font-bold text-zinc-100 header-glow tracking-tight">Painel de Imagens</h1>
+        <div x-show="liveConnected" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-950 border border-green-800 text-green-400 text-xs font-medium">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-400 new-badge"></span>
+          Live
+        </div>
+      </div>
+      <p class="text-zinc-500 text-sm ml-11">Gigantes de Porto Alegre — Gestão de visitantes</p>
+
+      <!-- Stats -->
+      <div class="grid grid-cols-3 gap-3 mt-5">
+        <div class="stat-card rounded-xl px-4 py-3">
+          <p class="text-xs text-zinc-500 mb-1">Total de imagens</p>
+          <p class="text-2xl font-bold text-orange-400" x-text="images.length"></p>
+        </div>
+        <div class="stat-card rounded-xl px-4 py-3">
+          <p class="text-xs text-zinc-500 mb-1">Espaço usado</p>
+          <p class="text-2xl font-bold text-zinc-200" x-text="formatBytes(totalSize)"></p>
+        </div>
+        <div class="stat-card rounded-xl px-4 py-3">
+          <p class="text-xs text-zinc-500 mb-1">Selecionadas</p>
+          <p class="text-2xl font-bold text-zinc-200" x-text="selected.size"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="card-glass rounded-2xl p-3 mb-6 flex flex-wrap gap-2 items-center animate-slide-up">
+      <!-- Search -->
+      <div class="relative flex-1 min-w-44">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">🔍</span>
+        <input
+          type="text"
+          placeholder="Buscar por nome ou data..."
+          x-model="search"
+          @input="applyFilter()"
+          class="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/20 transition-all"
+        />
+      </div>
+
+      <!-- Sort -->
+      <select
+        x-model="sortBy"
+        @change="applyFilter()"
+        class="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-zinc-300 focus:outline-none focus:border-orange-500/50 transition-all cursor-pointer"
+      >
+        <option value="newest">Mais recentes</option>
+        <option value="oldest">Mais antigas</option>
+        <option value="largest">Maior tamanho</option>
+        <option value="smallest">Menor tamanho</option>
+        <option value="name">Nome A-Z</option>
+      </select>
+
+      <!-- View toggle -->
+      <div class="flex rounded-xl overflow-hidden border border-zinc-700">
+        <button
+          @click="viewMode = 'grid'"
+          class="px-3 py-2 text-sm transition-colors"
+          :class="viewMode === 'grid' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'"
+          title="Grade"
+        >⊞</button>
+        <button
+          @click="viewMode = 'list'"
+          class="px-3 py-2 text-sm transition-colors"
+          :class="viewMode === 'list' ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'"
+          title="Lista"
+        >≡</button>
+      </div>
+
+      <!-- Bulk actions -->
+      <button
+        x-show="selected.size > 0"
+        @click="deleteTarget = 'bulk'"
+        class="px-4 py-2 rounded-xl btn-danger text-white text-sm font-medium flex items-center gap-2"
+      >
+        <span>🗑</span>
+        <span x-text="`Deletar (${selected.size})`"></span>
+      </button>
+
+      <button
+        x-show="filtered.length > 0"
+        @click="toggleSelectAll()"
+        class="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 text-sm transition-colors"
+        x-text="selected.size === filtered.length ? 'Desmarcar todos' : 'Selecionar todos'"
+      ></button>
+
+      <!-- Upload button -->
+      <button
+        @click="showUpload = true"
+        class="px-4 py-2 rounded-xl btn-primary text-white text-sm font-semibold flex items-center gap-2 ml-auto"
+      >
+        <span class="text-base">+</span>
+        Upload
+      </button>
+
+      <!-- Refresh -->
+      <button
+        @click="loadImages()"
+        :class="loading ? 'animate-spin' : ''"
+        class="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 text-lg transition-colors"
+        title="Atualizar"
+      >↻</button>
+    </div>
+
+    <!-- Loading skeletons -->
+    <div x-show="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+      <template x-for="i in 12">
+        <div class="rounded-2xl overflow-hidden border border-zinc-800">
+          <div class="skeleton aspect-square"></div>
+          <div class="p-3 space-y-2">
+            <div class="skeleton h-3 rounded w-3/4"></div>
+            <div class="skeleton h-3 rounded w-1/2"></div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Empty state -->
+    <div x-show="!loading && filtered.length === 0" class="flex flex-col items-center justify-center py-24 text-center animate-fade-in">
+      <div class="text-6xl mb-4">🦴</div>
+      <p class="text-zinc-400 font-medium" x-text="search ? 'Nenhuma imagem encontrada para esta busca.' : 'Nenhuma imagem processada ainda.'"></p>
+      <p class="text-zinc-600 text-sm mt-1">As fotos do totem aparecerão aqui automaticamente.</p>
+    </div>
+
+    <!-- Grid View -->
+    <div
+      x-show="!loading && filtered.length > 0 && viewMode === 'grid'"
+      class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 animate-slide-up"
+    >
+      <template x-for="img in filtered" :key="img.name">
+        <div
+          class="img-card rounded-2xl overflow-hidden border border-zinc-800 cursor-pointer relative group"
+          :class="{ 'selected': selected.has(img.name), 'deleting': img._deleting }"
+          @click="toggleSelect(img.name)"
+        >
+          <!-- New badge -->
+          <div x-show="img._new" class="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded-full bg-orange-500 text-white text-xs font-bold new-badge">NOVO</div>
+
+          <!-- Checkbox -->
+          <div class="absolute top-2 right-2 z-10">
+            <input type="checkbox" class="checkbox-custom" :checked="selected.has(img.name)" @click.stop="toggleSelect(img.name)" />
+          </div>
+
+          <!-- Delete button (visible on hover) -->
+          <button
+            class="delete-btn absolute bottom-14 right-2 z-10 w-8 h-8 rounded-full bg-red-950 border border-red-800 text-red-400 hover:bg-red-900 flex items-center justify-center text-sm transition-colors"
+            @click.stop="deleteTarget = img.name"
+            title="Deletar"
+          >🗑</button>
+
+          <!-- Image -->
+          <div class="aspect-square bg-zinc-900 overflow-hidden">
+            <img
+              :src="img.url"
+              :alt="img.name"
+              class="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+              loading="lazy"
+            />
+          </div>
+
+          <!-- Info -->
+          <div class="p-2.5 bg-zinc-900/80">
+            <p class="text-xs text-zinc-400 truncate font-mono" x-text="img.name.replace('nobg-visitor-', '#').replace('.png','')"></p>
+            <div class="flex items-center justify-between mt-1">
+              <span class="text-xs text-zinc-600" x-text="formatDate(img.createdAt)"></span>
+              <span class="text-xs text-zinc-600" x-text="formatBytes(img.size)"></span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- List View -->
+    <div
+      x-show="!loading && filtered.length > 0 && viewMode === 'list'"
+      class="card-glass rounded-2xl overflow-hidden animate-slide-up"
+    >
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="text-left px-4 py-3 text-zinc-500 font-medium w-8">
+              <input type="checkbox" class="checkbox-custom" :checked="selected.size === filtered.length && filtered.length > 0" @click="toggleSelectAll()" />
+            </th>
+            <th class="text-left px-4 py-3 text-zinc-500 font-medium">Imagem</th>
+            <th class="text-left px-4 py-3 text-zinc-500 font-medium hidden sm:table-cell">Data</th>
+            <th class="text-left px-4 py-3 text-zinc-500 font-medium hidden md:table-cell">Tamanho</th>
+            <th class="text-right px-4 py-3 text-zinc-500 font-medium">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="img in filtered" :key="img.name">
+            <tr
+              class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
+              :class="{ 'bg-orange-500/5': selected.has(img.name), 'deleting': img._deleting }"
+              @click="toggleSelect(img.name)"
+            >
+              <td class="px-4 py-3">
+                <input type="checkbox" class="checkbox-custom" :checked="selected.has(img.name)" @click.stop="toggleSelect(img.name)" />
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-lg overflow-hidden bg-zinc-900 shrink-0">
+                    <img :src="img.url" :alt="img.name" class="w-full h-full object-contain" loading="lazy" />
+                  </div>
+                  <div>
+                    <p class="text-zinc-200 font-mono text-xs truncate max-w-48" x-text="img.name"></p>
+                    <div x-show="img._new" class="inline-block px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-xs mt-0.5 new-badge">novo</div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3 text-zinc-500 text-xs hidden sm:table-cell" x-text="formatDateLong(img.createdAt)"></td>
+              <td class="px-4 py-3 text-zinc-500 text-xs hidden md:table-cell" x-text="formatBytes(img.size)"></td>
+              <td class="px-4 py-3 text-right">
+                <button
+                  @click.stop="deleteTarget = img.name"
+                  class="px-3 py-1.5 rounded-lg bg-red-950/50 border border-red-900/50 text-red-400 hover:bg-red-950 text-xs transition-colors"
+                >Deletar</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-8 text-center text-zinc-700 text-xs" x-show="!loading">
+      <span x-text="`${filtered.length} de ${images.length} imagens`"></span>
+      <span x-show="selected.size > 0" x-text="` · ${selected.size} selecionadas`" class="text-orange-600"></span>
+    </div>
+
+  </div>
+
+  <script>
+    function adminApp() {
+      return {
+        images: [],
+        filtered: [],
+        search: '',
+        sortBy: 'newest',
+        viewMode: 'grid',
+        selected: new Set(),
+        loading: true,
+        showUpload: false,
+        dragOver: false,
+        uploadQueue: [],
+        toasts: [],
+        deleteTarget: null,
+        liveConnected: false,
+        _toastId: 0,
+
+        get totalSize() {
+          return this.images.reduce((sum, img) => sum + (img.size || 0), 0);
+        },
+
+        async init() {
+          await this.loadImages();
+          this.setupSocket();
+        },
+
+        async loadImages() {
+          this.loading = true;
+          try {
+            const res = await fetch('/admin-images');
+            if (!res.ok) throw new Error('Falha ao carregar');
+            this.images = await res.json();
+            this.applyFilter();
+          } catch (e) {
+            this.toast('Erro ao carregar imagens: ' + e.message, 'error');
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        applyFilter() {
+          let result = [...this.images];
+
+          if (this.search.trim()) {
+            const q = this.search.toLowerCase();
+            result = result.filter(img =>
+              img.name.toLowerCase().includes(q) ||
+              this.formatDateLong(img.createdAt).toLowerCase().includes(q)
+            );
+          }
+
+          result.sort((a, b) => {
+            switch (this.sortBy) {
+              case 'newest':  return new Date(b.createdAt) - new Date(a.createdAt);
+              case 'oldest':  return new Date(a.createdAt) - new Date(b.createdAt);
+              case 'largest': return b.size - a.size;
+              case 'smallest':return a.size - b.size;
+              case 'name':    return a.name.localeCompare(b.name);
+              default:        return 0;
+            }
+          });
+
+          this.filtered = result;
+          // Clean up selection for items no longer visible
+          const names = new Set(result.map(i => i.name));
+          this.selected = new Set([...this.selected].filter(n => names.has(n)));
+        },
+
+        toggleSelect(name) {
+          const s = new Set(this.selected);
+          if (s.has(name)) s.delete(name);
+          else s.add(name);
+          this.selected = s;
+        },
+
+        toggleSelectAll() {
+          if (this.selected.size === this.filtered.length) {
+            this.selected = new Set();
+          } else {
+            this.selected = new Set(this.filtered.map(i => i.name));
+          }
+        },
+
+        async confirmDelete() {
+          if (this.deleteTarget === 'bulk') {
+            await this.deleteBulk();
+          } else if (this.deleteTarget) {
+            await this.deleteOne(this.deleteTarget);
+          }
+          this.deleteTarget = null;
+        },
+
+        async deleteOne(name) {
+          const img = this.images.find(i => i.name === name);
+          if (img) img._deleting = true;
+
+          await new Promise(r => setTimeout(r, 250)); // wait for animation
+
+          try {
+            const res = await fetch(`/uploads/${name}`, { method: 'DELETE' });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data.error || 'Falha ao deletar');
+            }
+            this.images = this.images.filter(i => i.name !== name);
+            this.selected.delete(name);
+            this.applyFilter();
+            this.toast('Imagem deletada com sucesso.', 'success');
+          } catch (e) {
+            if (img) img._deleting = false;
+            this.toast('Erro: ' + e.message, 'error');
+          }
+        },
+
+        async deleteBulk() {
+          const targets = [...this.selected];
+          let success = 0, fail = 0;
+
+          targets.forEach(name => {
+            const img = this.images.find(i => i.name === name);
+            if (img) img._deleting = true;
+          });
+
+          await new Promise(r => setTimeout(r, 250));
+
+          await Promise.all(targets.map(async (name) => {
+            try {
+              const res = await fetch(`/uploads/${name}`, { method: 'DELETE' });
+              if (!res.ok) throw new Error();
+              success++;
+            } catch {
+              fail++;
+            }
+          }));
+
+          this.images = this.images.filter(i => !targets.includes(i.name) || fail > 0);
+          this.selected = new Set();
+          this.applyFilter();
+          this.toast(
+            fail === 0
+              ? `${success} imagens deletadas com sucesso.`
+              : `${success} deletadas, ${fail} falhas.`,
+            fail === 0 ? 'success' : 'error'
+          );
+          await this.loadImages();
+        },
+
+        async handleDrop(e) {
+          this.dragOver = false;
+          const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+          if (files.length) await this.uploadFiles(files);
+        },
+
+        async handleFileInput(e) {
+          const files = [...e.target.files].filter(f => f.type.startsWith('image/'));
+          if (files.length) await this.uploadFiles(files);
+          e.target.value = '';
+        },
+
+        async uploadFiles(files) {
+          this.uploadQueue = files.map(f => ({ name: f.name, progress: 0 }));
+
+          await Promise.all(files.map(async (file, idx) => {
+            const formData = new FormData();
+            formData.append('photo', file);
+
+            try {
+              const xhr = new XMLHttpRequest();
+              await new Promise((resolve, reject) => {
+                xhr.upload.onprogress = (e) => {
+                  if (e.lengthComputable) {
+                    this.uploadQueue[idx].progress = Math.round((e.loaded / e.total) * 100);
+                  }
+                };
+                xhr.onload = () => {
+                  this.uploadQueue[idx].progress = 100;
+                  resolve();
+                };
+                xhr.onerror = reject;
+                xhr.open('POST', '/upload');
+                xhr.send(formData);
+              });
+            } catch {
+              this.toast(`Erro ao enviar ${file.name}`, 'error');
+            }
+          }));
+
+          this.toast('Upload enviado para processamento. Aguarde alguns instantes.', 'info');
+          setTimeout(() => {
+            this.uploadQueue = [];
+            this.showUpload = false;
+            this.loadImages();
+          }, 1500);
+        },
+
+        setupSocket() {
+          try {
+            const socket = io({ transports: ['websocket', 'polling'] });
+
+            socket.on('connect', () => {
+              this.liveConnected = true;
+            });
+            socket.on('disconnect', () => {
+              this.liveConnected = false;
+            });
+            socket.on('new_visitor', async (data) => {
+              this.toast('Nova foto capturada e processada!', 'success');
+              await this.loadImages();
+              // Mark first image as new briefly
+              if (this.images.length > 0) {
+                this.images[0]._new = true;
+                this.applyFilter();
+                setTimeout(() => {
+                  if (this.images[0]) this.images[0]._new = false;
+                  this.applyFilter();
+                }, 8000);
+              }
+            });
+          } catch (e) {
+            console.warn('Socket.io não disponível:', e);
+          }
+        },
+
+        toast(message, type = 'info') {
+          const id = ++this._toastId;
+          this.toasts.push({ id, message, type, leaving: false });
+          setTimeout(() => this.removeToast(id), 4000);
+        },
+
+        removeToast(id) {
+          const t = this.toasts.find(t => t.id === id);
+          if (!t) return;
+          t.leaving = true;
+          setTimeout(() => {
+            this.toasts = this.toasts.filter(t => t.id !== id);
+          }, 300);
+        },
+
+        formatBytes(bytes) {
+          if (!bytes) return '—';
+          if (bytes < 1024) return bytes + ' B';
+          if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+          return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        },
+
+        formatDate(dateStr) {
+          const d = new Date(dateStr);
+          return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' +
+                 d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        },
+
+        formatDateLong(dateStr) {
+          const d = new Date(dateStr);
+          return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' +
+                 d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        },
+      };
+    }
+  </script>
+</body>
+</html>
