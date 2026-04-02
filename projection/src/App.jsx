@@ -1,11 +1,18 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Text, Billboard, useGLTF, Environment, Sky, Html, Grid, useTexture } from '@react-three/drei';
+import { Text, Billboard, useGLTF, Environment, Sky, Html, Grid, useTexture, Stats } from '@react-three/drei';
 import { GUI } from 'lil-gui';
 import * as THREE from 'three';
 import { EffectComposer, DepthOfField, BrightnessContrast, HueSaturation, Vignette, Bloom, Noise } from '@react-three/postprocessing';
 import io from 'socket.io-client';
 import './App.css';
+
+// Warp imports
+import { useWarpState } from './hooks/useWarpState';
+import { WarpCanvas } from './components/WarpCanvas';
+import { WarpOverlay } from './components/WarpOverlay';
+import { WarpShortcuts } from './components/WarpShortcuts';
+import { BackgroundVideo } from './components/BackgroundVideo';
 
 // Socket connection — porta 3001 (HTTP, sem certificado)
 const socket = io(window.location.hostname === 'localhost'
@@ -51,7 +58,7 @@ function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfigRef }) {
   });
 
   return (
-    <group position={[moveConfig.startX, -3, moveConfig.z]} ref={ref}>
+    <group position={[moveConfig.startX, -3 + (spriteConfigRef.current.spritesYOffset || 0) + (moveConfig.verticalJitter || 0), moveConfig.z]} ref={ref}>
       <Billboard>
         <SpriteCharacter
           faceUrl={imageUrl}
@@ -79,7 +86,7 @@ function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfigRef }) {
 
 const PRESET_KEY = 'gigantes_preset_last';
 
-const CONFIG_VERSION = 3;
+const CONFIG_VERSION = 4;
 
 const DEFAULT_CONFIG = {
   _v: CONFIG_VERSION,
@@ -89,6 +96,7 @@ const DEFAULT_CONFIG = {
   scaleMin: 1.2, scaleMax: 1.4,
   speedMin: 0.8, speedMax: 1.2,
   spawnInterval: 2.5, showDebug: false,
+  spritesYOffset: 0.0,
   // Cores
   enableColors: false, brightness: 0, contrast: 0, hue: 0, saturation: 0,
   // Bloom
@@ -99,6 +107,19 @@ const DEFAULT_CONFIG = {
   enableNoise: false, noiseOpacity: 0.15,
   // DoF
   enableDof: false, dofTargetZ: 0, dofFocalLength: 0.02, dofBokehScale: 2,
+  // Warp (persisted in its own hook but synced for presets)
+  warpEnabled: false,
+  warpCols: 4,
+  warpRows: 4,
+  warpSubdiv: 12,
+  enableBgVideo: false,
+  bgVideoUrl: 'https://vjs.zencdn.net/v/oceans.mp4',
+  bgVideoOpacity: 1.0,
+  showDino: true,
+  showFloor: true,
+  showText: false,
+
+  warpOffsets: [],
 };
 
 function loadSavedConfig() {
@@ -106,37 +127,74 @@ function loadSavedConfig() {
     const raw = localStorage.getItem(PRESET_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      // Saneamento de URL: Se for a URL antiga que costuma quebrar, reseta para a nova estável
+      if (parsed.bgVideoUrl && parsed.bgVideoUrl.includes('commondatastorage')) {
+        parsed.bgVideoUrl = DEFAULT_CONFIG.bgVideoUrl;
+      }
       // Discard saves from older versions
       if (parsed._v === CONFIG_VERSION) return { ...DEFAULT_CONFIG, ...parsed };
       console.log('[Gigantes] Preset desatualizado — usando padrões');
     }
-  } catch {}
+  } catch { }
   return { ...DEFAULT_CONFIG };
 }
 
-function Scene() {
+function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
+  const { camera, gl } = useThree();
+  
   const [visitors, setVisitors] = useState([]);
   const [connected, setConnected] = useState(false);
-  const { camera } = useThree();
+
+  // Pass canvas ref up
+  useEffect(() => {
+    if (gl.domElement) setSourceCanvas(gl.domElement);
+  }, [gl, setSourceCanvas]);
   const activePoolRef = useRef([]);
+
+  // Sincroniza estado do Warp com o config global (CFG)
+  const warpRef = useRef(warp);
+  useEffect(() => { warpRef.current = warp; }, [warp]);
+
+  // Sincroniza estado do Warp com o config global (CFG) - Versão estável com Ref
+  const warpSync = useCallback(() => {
+    const w = warpRef.current;
+    setCfg(prev => ({
+      ...prev,
+      warpEnabled: w.state.enabled,
+      warpCols: w.state.cols,
+      warpRows: w.state.rows,
+      warpOffsets: [...w.offsetsRef.current]
+    }));
+  }, []);
+
+  // Exponha para o App poder chamar via atalho S
+  useEffect(() => {
+    window.__warpSync = warpSync;
+    return () => { delete window.__warpSync; };
+  }, [warpSync]);
+
   const spawnRef = useRef(null);
 
-  const [cfg, setCfg] = useState(loadSavedConfig);
   const cfgRef = useRef(cfg);
   useEffect(() => { cfgRef.current = cfg; }, [cfg]);
-
-  // Auto-save on any change
-  useEffect(() => {
-    try { localStorage.setItem(PRESET_KEY, JSON.stringify(cfg)); } catch {}
-  }, [cfg]);
 
   // Build lil-gui panel once
   useEffect(() => {
     const gui = new GUI({ title: 'Configurações' });
-    const proxy = { ...cfgRef.current };
+    const proxy = { ...cfgRef.current, editingWarp: !!warpRef.current?.state?.editing };
+
+    // Atualiza o proxy local quando o cfg externo muda (vindo de presets ou shortcuts)
+    const updateProxyFromCfg = (newCfg) => {
+      Object.assign(proxy, newCfg);
+      gui.controllersRecursive().forEach(c => c.updateDisplay());
+    };
+
+    // Expomos a atualização para uso externo
+    window.__guiUpdate = updateProxyFromCfg;
+
     const sync = (key) => (v) => {
       proxy[key] = v;
-      cfgRef.current = { ...cfgRef.current, [key]: v }; // imediato — sem esperar React
+      cfgRef.current = { ...cfgRef.current, [key]: v };
       setCfg(prev => ({ ...prev, [key]: v }));
     };
 
@@ -153,6 +211,7 @@ function Scene() {
     sprite.add(proxy, 'speedMin', 0.1, 8.0, 0.1).name('Vel. mín (u/s)').onChange(sync('speedMin'));
     sprite.add(proxy, 'speedMax', 0.1, 8.0, 0.1).name('Vel. máx (u/s)').onChange(sync('speedMax'));
     sprite.add(proxy, 'spawnInterval', 0.5, 10, 0.5).name('Intervalo spawn (s)').onChange(sync('spawnInterval'));
+    sprite.add(proxy, 'spritesYOffset', -5, 5, 0.01).name('Altura Visitantes (Y)').onChange(sync('spritesYOffset'));
     sprite.add(proxy, 'showDebug').name('Labels debug').onChange(sync('showDebug'));
     sprite.add({ adicionar: () => spawnRef.current?.() }, 'adicionar').name('▶ Adicionar visitante');
     sprite.add({ remover: () => setCfg(prev => { setVisitors([]); return prev; }) }, 'remover').name('✕ Remover todos');
@@ -182,6 +241,15 @@ function Scene() {
 
     const dof = fx.addFolder('Profundidade (DoF)');
     dof.add(proxy, 'enableDof').name('Ativar').onChange(sync('enableDof'));
+
+    const bg = gui.addFolder('🏞️ Cenas / Ambiente');
+    bg.add(proxy, 'enableBgVideo').name('Vídeo de Fundo').onChange(sync('enableBgVideo'));
+    bg.add(proxy, 'bgVideoUrl').name('URL do Vídeo').onFinishChange(sync('bgVideoUrl'));
+    bg.add(proxy, 'bgVideoOpacity', 0, 1, 0.01).name('Opacidade').onChange(sync('bgVideoOpacity'));
+    bg.add(proxy, 'showDino').name('Mostrar Dinossauro').onChange(sync('showDino'));
+    bg.add(proxy, 'showFloor').name('Mostrar Chão/Grid').onChange(sync('showFloor'));
+    bg.add(proxy, 'showText').name('Mostrar Título').onChange(sync('showText'));
+
     dof.add(proxy, 'dofTargetZ', -20, 15, 0.1).name('Z Target (foco)').onChange(sync('dofTargetZ'));
     dof.add(proxy, 'dofFocalLength', 0, 0.1, 0.0001).name('Focal Length').onChange(sync('dofFocalLength'));
     dof.add(proxy, 'dofBokehScale', 0, 30, 0.01).name('Bokeh Scale').onChange(sync('dofBokehScale'));
@@ -225,8 +293,61 @@ function Scene() {
       }
     }, 'resetar').name('↩️ Resetar padrão');
 
+    // --- Warp GUI ---
+    const dist = gui.addFolder('📀 Distorção');
+
+    dist.add(proxy, 'warpEnabled').name('Ativar Warp').onChange(v => {
+      warpRef.current.setEnabled(v);
+      warpSync();
+    });
+
+    dist.add(proxy, 'editingWarp').name('✏️ Editar Grid').onChange(v => {
+      warpRef.current.setEditing(v);
+    });
+
+    dist.add(proxy, 'warpCols', 2, 10, 1).name('Colunas').onChange(v => {
+      warpRef.current.setGrid(v, proxy.warpRows);
+      warpSync();
+    });
+    dist.add(proxy, 'warpRows', 2, 10, 1).name('Linhas').onChange(v => {
+      warpRef.current.setGrid(proxy.warpCols, v);
+      warpSync();
+    });
+    dist.add(proxy, 'warpSubdiv', 1, 30, 1).name('Refinamento (Smooth)').onChange(sync('warpSubdiv'));
+
+
+    dist.add({
+      reset: () => {
+        if (confirm('Resetar todo o grid?')) {
+          warpRef.current.resetAll();
+          warpSync();
+        }
+      }
+    }, 'reset').name('↩ Resetar Grid');
+
     return () => gui.destroy();
   }, []);
+
+  // Sincroniza estado do Warp APENAS se houver dados válidos no cfg
+  useEffect(() => {
+    if (cfg.warpOffsets && cfg.warpOffsets.length > 0) {
+      const isSame = cfg.warpCols === warp.state.cols &&
+        cfg.warpRows === warp.state.rows &&
+        JSON.stringify(cfg.warpOffsets) === JSON.stringify(warp.offsetsRef.current);
+
+      if (!isSame) {
+        console.log('[Warp] Sincronizando com preset...');
+        warp.setEnabled(cfg.warpEnabled);
+        if (cfg.warpCols !== warp.state.cols || cfg.warpRows !== warp.state.rows) {
+          warp.setGrid(cfg.warpCols, cfg.warpRows);
+        }
+        warp.offsetsRef.current = [...cfg.warpOffsets];
+        warp.commitOffsets();
+        // Atualiza a GUI para refletir mudanças do preset carregado
+        if (window.__guiUpdate) window.__guiUpdate(cfg);
+      }
+    }
+  }, [cfg.warpOffsets, cfg.warpCols, cfg.warpRows, cfg.warpEnabled]);
 
   // Aliases para manter compatibilidade com o resto do código
   const spriteConfig = cfg;
@@ -240,7 +361,7 @@ function Scene() {
 
   const [history, setHistory] = useState([]);
   const [apiError, setApiError] = useState(false);
-  const MAX_VISITORS = 15;
+  const MAX_VISITORS = 10;
 
   const serverUrl = window.location.hostname === 'localhost'
     ? 'http://localhost:3001/visitors'
@@ -284,6 +405,9 @@ function Scene() {
   // Sync pool para ref (acessível em callbacks sem re-render)
   useEffect(() => { activePoolRef.current = activePool; }, [activePool]);
 
+  const visitorsRef = useRef([]);
+  useEffect(() => { visitorsRef.current = visitors; }, [visitors]);
+
   useEffect(() => {
     const rotatePool = () => {
       if (history.length <= 1) return;
@@ -302,7 +426,13 @@ function Scene() {
     const direction = Math.random() > 0.5 ? 1 : -1;
     const speed = (cfg.speedMin + Math.random() * (cfg.speedMax - cfg.speedMin)) * direction;
     const scale = cfg.scaleMin + Math.random() * (cfg.scaleMax - cfg.scaleMin);
-    return { direction, speed, scale, startX: -5 * direction, z: 2 + Math.random() * 6, phaseOffset: Math.random() * Math.PI * 2 };
+    const verticalJitter = (Math.random() - 0.5) * 0.4; // Pequena varredura para não encavalar
+    return { 
+      direction, speed, scale, startX: -5 * direction, 
+      z: 2 + Math.random() * 6, 
+      phaseOffset: Math.random() * Math.PI * 2,
+      verticalJitter
+    };
   }, []);
 
   const spawnOne = useCallback((imageUrl) => {
@@ -322,7 +452,7 @@ function Scene() {
   useFrame((state) => {
     const now = state.clock.elapsedTime;
     const interval = spriteConfigRef.current.spawnInterval ?? 2.0;
-    if (visitors.length < MAX_VISITORS &&
+    if (visitorsRef.current.length < MAX_VISITORS &&
       activePoolRef.current.length > 0 &&
       now - lastSpawnRef.current >= interval) {
       lastSpawnRef.current = now;
@@ -334,8 +464,6 @@ function Scene() {
         moveConfig: makeMoveConfig(),
       }]);
     }
-
-    // Câmera é estática e fixa.
   });
 
   const removeVisitor = (id) => {
@@ -366,15 +494,18 @@ function Scene() {
       <ambientLight intensity={1.5} />
       <directionalLight position={[10, 20, 10]} intensity={2.0} castShadow />
 
-      <Sky sunPosition={[100, 20, 100]} turbidity={0.1} rayleigh={0.5} />
+      {!cfg.enableBgVideo && <Sky sunPosition={[100, 20, 100]} turbidity={0.1} rayleigh={0.5} />}
       <Environment preset="park" background={false} />
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -3.01, 0]} receiveShadow>
-        <planeGeometry args={[1000, 1000]} />
-        <meshStandardMaterial color="#444444" roughness={1} />
-      </mesh>
-
-      <Grid infiniteGrid sectionSize={2} cellSize={1} position={[0, -3, 0]} cellColor="#666" sectionColor="#fff" />
+      {cfg.showFloor && (
+        <>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -3.01, 0]} receiveShadow>
+            <planeGeometry args={[1000, 1000]} />
+            <meshStandardMaterial color="#444444" roughness={1} />
+          </mesh>
+          <Grid infiniteGrid sectionSize={2} cellSize={1} position={[0, -3, 0]} cellColor="#666" sectionColor="#fff" />
+        </>
+      )}
 
       <group position={[-8, -3, 0]}>
         <mesh position={[0, 3, 0]}>
@@ -392,11 +523,13 @@ function Scene() {
         ))}
       </group>
 
-      <React.Suspense fallback={<mesh position={[0, 0, -10]}><boxGeometry args={[2, 6, 2]} /><meshBasicMaterial color="red" /></mesh>}>
-        <group scale={3.0} position={[0, -3, -15]}>
-          <Dinosaur />
-        </group>
-      </React.Suspense>
+      {cfg.showDino && (
+        <React.Suspense fallback={<mesh position={[0, 0, -10]}><boxGeometry args={[2, 6, 2]} /><meshBasicMaterial color="red" /></mesh>}>
+          <group scale={3.0} position={[0, -3, -15]}>
+            <Dinosaur />
+          </group>
+        </React.Suspense>
+      )}
 
       <React.Suspense fallback={null}>
         {visitors.map(v => (
@@ -446,26 +579,93 @@ function Scene() {
         />
       </EffectComposer>
 
-      <Billboard position={[0, 2.5, -15]}>
-        <Text fontSize={0.5} color="white" outlineWidth={0.05} outlineColor="black">GIGANTES DE PORTO ALEGRE</Text>
-        <Text position={[0, -0.3, 0]} fontSize={0.15} color={connected ? "#4caf50" : "#f44336"}>
-          {connected ? "● LIVE SCAN" : "○ SCANNING..."} | {visitors.length} PERSONS
-        </Text>
-      </Billboard>
+      {cfg.showText && (
+        <Billboard position={[0, 2.5, -15]}>
+          <Text fontSize={0.5} color="white" outlineWidth={0.05} outlineColor="black">GIGANTES DE PORTO ALEGRE</Text>
+          <Text position={[0, -0.3, 0]} fontSize={0.15} color={connected ? "#4caf50" : "#f44336"}>
+            {connected ? "● LIVE SCAN" : "○ SCANNING..."} | {visitors.length} PERSONS
+          </Text>
+        </Billboard>
+      )}
     </>
   );
 }
 
 export default function App() {
+  const [sourceCanvas, setSourceCanvas] = useState(null);
+  const sourceCanvasRef = useRef(null);
+  useEffect(() => { sourceCanvasRef.current = sourceCanvas; }, [sourceCanvas]);
+
+  const [cfg, setCfg] = useState(loadSavedConfig);
+
+  // Auto-save on any change
+  useEffect(() => {
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(cfg)); } catch { }
+  }, [cfg]);
+
+  const warp = useWarpState();
+
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#000' }}>
-      <Canvas
-        shadows
-        camera={{ fov: 10, position: [0, 0, 40], near: 0.1, far: 1000 }}
-      >
-        <color attach="background" args={['#87CEEB']} />
-        <Scene />
-      </Canvas>
+    <div style={{ width: '100vw', height: '100vh', background: '#000', overflow: 'hidden', position: 'relative' }}>
+      <WarpShortcuts
+        warp={warp}
+        onCommit={() => {
+          warp.commitOffsets();
+          // Força o sync com o config para salvar no PRESET_KEY também
+          if (window.__warpSync) window.__warpSync();
+        }}
+        onMoveVertex={warp.moveVertexLive}
+      />
+      {/* Main R3F Canvas - hidden if warp is active and NOT editing (production) */}
+      <div style={{
+        width: '100%', height: '100%',
+        opacity: (warp.state.enabled && !warp.state.editing) ? 0 : 1,
+        pointerEvents: (warp.state.enabled && !warp.state.editing) ? 'none' : 'auto'
+      }}>
+        <Canvas
+          shadows
+          gl={{ preserveDrawingBuffer: true }} // Required to read as texture
+          camera={{ fov: 10, position: [0, 0, 40], near: 0.1, far: 1000 }}
+        >
+          <Stats />
+          <color attach="background" args={['#000']} />
+          {/* Vídeo de fundo condicional para evitar overhead e hooks pendentes */}
+          {cfg.enableBgVideo && (
+            <Suspense fallback={null}>
+              <BackgroundVideo
+                url={cfg.bgVideoUrl}
+                opacity={cfg.bgVideoOpacity}
+              />
+            </Suspense>
+          )}
+          <Scene setSourceCanvas={setSourceCanvas} warp={warp} cfg={cfg} setCfg={setCfg} />
+        </Canvas>
+      </div>
+
+      {/* Warp Layer */}
+      {warp.state.enabled && (
+        <WarpCanvas
+          sourceCanvasRef={sourceCanvasRef}
+          cols={warp.state.cols}
+          rows={warp.state.rows}
+          subdiv={cfg.warpSubdiv || 12}
+          offsetsRef={warp.offsetsRef}
+          visible={warp.state.enabled}
+        />
+      )}
+
+      {/* Edit Overlay */}
+      {warp.state.editing && (
+        <WarpOverlay
+          cols={warp.state.cols}
+          rows={warp.state.rows}
+          offsetsRef={warp.offsetsRef}
+          warp={warp}
+          onMoveVertex={warp.moveVertexLive}
+          onResetVertex={warp.resetVertex}
+          onCommit={warp.commitOffsets}
+        />
+      )}
     </div>
   );
 }

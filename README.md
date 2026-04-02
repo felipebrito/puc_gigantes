@@ -21,10 +21,22 @@ Servidor central que processa o "trabalho pesado" da Inteligência Artificial.
 - **Socket.io Bridge:** Notifica instantaneamente a Unity e a Projeção sobre novos visitantes.
 - **Gerenciamento:** Serve como diretório de uploads e ponte de hardware para encoders/sensores.
 
-### 3. 📺 Projection / Unity
-Módulo de visualização que integra os visitantes na cenografia 3D histórica.
-- **Refresh Dinâmico:** Atualiza a galeria de rostos flutuantes conforme novas fotos chegam.
-- **Standalone:** Pode ser rodado como uma página Web ou integrado diretamente no cenário da Unity via loops de polling na API `/visitors`.
+### 3. 📺 Projection / Virtual Scene
+Módulo de visualização e projeção mapeada.
+- **Calibração Profissional (Warp):** Sistema de Keystoning com subdivisão de malha para ajuste em superfícies irregulares.
+- **Ambiente Dinâmico:** Suporte a vídeo de fundo 16:9 que preenche a tela, toggles para elementos da cena (Gigantes, Chão, Grid) e controle de pós-processamento (Bloom, DoF, Vignette).
+- **Sincronização Booth:** Spawn instantâneo de novos visitantes via Socket.io com preload de texturas para evitar flickers.
+
+## ⌨️ Atalhos de Teclado (Projeção)
+
+| Tecla | Ação |
+|---|---|
+| **C** | Ativa/Desativa modo de **CALIBRAÇÃO** (Warp) |
+| **1, 2, 3, 4** | Seleciona os cantos (TL, TR, BR, BL) |
+| **Setas** | Move o ponto selecionado (Precisão) |
+| **Shift + Setas** | Move o ponto selecionado (Rápido) |
+| **S** | **SALVA** a calibração no navegador (LocalStorage) |
+| **F** | Toggle Fullscreen (Nativo do Browser) |
 
 ## 🚀 Como Rodar
 
@@ -45,4 +57,4 @@ npx cap sync android
 No Android Studio, basta gerar o APK e rodar no tablet dinamicamente.
 
 ---
-*Desenvolvido para Museu de Ciências e Tecnologia / PUC*
+*Desenvolvido para MCT / PUCRS*

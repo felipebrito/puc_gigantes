@@ -5,7 +5,28 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [0.6.0] — 2026-04-02
+
+### Adicionado
+- **Ferramenta de Grid Mesh Warp (Keystoning)** — sistema profissional de calibração geométrica para projeção mapeada:
+  - Subdivisão de malha dinâmica (`warpSubdiv`) para distorções suaves (bicubic/bilinear interpolation).
+  - Modo de Edição Visual via HUD com feedback de seleção.
+  - Atalhos de Teclado Globais: `C` (Calibração), `1-4` (Seleção), `Setas` (Movimento), `S` (Salvar).
+- **Vídeo de Fundo (Ambiente)** — suporte a texturas de vídeo em loop que cobrem exatamente as extremidades da tela (`viewport.getCurrentViewport`).
+- **Monitor de Performance** — integração do `@react-three/drei/Stats` para monitoramento de FPS e oscilações em tempo real.
+- **Controles de Visibilidade** — toggles no menu para Dinossauro, Chão/Grid e Título da cena.
+- **Ajuste de Altura de Visitantes** — slider `spritesYOffset` para alinhar os personagens com o chão físico sem mover a câmera.
+
+### Alterado
+- **Estabilização da GUI (`lil-gui`)** — refatoração completa para evitar re-renders do menu ao mudar estados; pastas agora mantêm seu estado de aberto/fechado.
+- **Otimização de Spawn** — redução do limite máximo padrão para 10 personagens e adição de `verticalJitter` (pequeno desvio aleatório na altura) para evitar sobreposição perfeita de sprites.
+- **Saneamento de Presets** — detecção automática de links de vídeo quebrados no `localStorage` e restauração de padrões funcionais.
+
+### Corrigido
+- Erro de `ReferenceError: cfg is not defined` ao tentar acessar configurações fora do escopo.
+- Bug de abas do menu que abriam sozinhas a cada interação.
+- "Tela Preta" causada por suspensão de vídeo mal tratada (adicionado `Suspense` local e carregamento condicional).
+- Aspecto "bizarro" do vídeo de fundo (agora redimensiona dinamicamente com o aspecto da janela).
 
 ---
 
