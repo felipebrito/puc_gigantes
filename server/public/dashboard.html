@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gigantes de POA — Central de Controle</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          animation: {
+            'fade-in':   'fadeIn 0.4s ease-out',
+            'slide-up':  'slideUp 0.4s ease-out',
+            'slide-up-d1': 'slideUp 0.4s 0.05s ease-out both',
+            'slide-up-d2': 'slideUp 0.4s 0.10s ease-out both',
+            'slide-up-d3': 'slideUp 0.4s 0.15s ease-out both',
+            'slide-up-d4': 'slideUp 0.4s 0.20s ease-out both',
+            'pulse-soft': 'pulseSoft 2.5s ease-in-out infinite',
+            'spin-slow':  'spin 3s linear infinite',
+            'shimmer':    'shimmer 1.6s infinite',
+          },
+          keyframes: {
+            fadeIn:     { from: { opacity: 0 }, to: { opacity: 1 } },
+            slideUp:    { from: { opacity: 0, transform: 'translateY(16px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+            pulseSoft:  { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.4 } },
+            shimmer:    { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } },
+          }
+        }
+      }
+    }
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    body { background: #09090b; font-family: system-ui, -apple-system, sans-serif; }
+
+    .glass       { background: rgba(24,24,27,0.85); backdrop-filter: blur(16px); border: 1px solid rgba(63,63,70,0.5); }
+    .glass-hover { transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s; }
+    .glass-hover:hover { border-color: rgba(249,115,22,0.35); box-shadow: 0 8px 32px rgba(0,0,0,0.4); transform: translateY(-2px); }
+
+    .accent-line { background: linear-gradient(90deg, #ea580c, #f97316, #fb923c); }
+
+    .btn-primary { background: linear-gradient(135deg, #ea580c, #f97316); transition: opacity .15s, transform .15s; }
+    .btn-primary:hover { opacity: .9; transform: scale(1.02); }
+
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-online  { background: #22c55e; box-shadow: 0 0 6px #22c55e88; animation: pulseSoft 2.5s ease-in-out infinite; }
+    .dot-offline { background: #52525b; }
+    .dot-loading { background: #f59e0b; animation: pulseSoft 1s ease-in-out infinite; }
+
+    .skeleton { background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%); background-size: 200% 100%; animation: shimmer 1.6s infinite; }
+
+    .endpoint-chip { background: rgba(39,39,42,0.8); border: 1px solid rgba(63,63,70,0.6); transition: border-color .15s, background .15s; }
+    .endpoint-chip:hover { border-color: rgba(249,115,22,.4); background: rgba(249,115,22,.06); }
+
+    .method-get    { background: rgba(34,197,94,.12);  color: #86efac; border: 1px solid rgba(34,197,94,.25); }
+    .method-post   { background: rgba(59,130,246,.12); color: #93c5fd; border: 1px solid rgba(59,130,246,.25); }
+    .method-delete { background: rgba(239,68,68,.12);  color: #fca5a5; border: 1px solid rgba(239,68,68,.25); }
+
+    .visitor-thumb { transition: transform .2s, box-shadow .2s; }
+    .visitor-thumb:hover { transform: scale(1.08); box-shadow: 0 8px 24px rgba(0,0,0,0.6); z-index: 10; }
+
+    .grid-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+
+    .new-pulse { animation: pulseSoft .8s ease-in-out 4; }
+
+    @keyframes countUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .count-anim { animation: countUp .3s ease-out; }
+  </style>
+</head>
+
+<body class="min-h-screen text-zinc-100 antialiased" x-data="dashboard()" x-init="init()" x-cloak>
+
+  <!-- Top bar -->
+  <header class="glass border-b border-zinc-800/60 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-5 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl select-none">🦕</span>
+        <div>
+          <h1 class="text-sm font-bold text-zinc-100 leading-tight tracking-wide">GIGANTES DE PORTO ALEGRE</h1>
+          <p class="text-xs text-zinc-500 leading-tight">Central de Controle</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <!-- Live clock -->
+        <span class="text-xs text-zinc-500 font-mono hidden sm:block" x-text="clock"></span>
+
+        <!-- Server status pill -->
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full glass text-xs font-medium"
+             :class="status.server ? 'text-green-400' : 'text-red-400'">
+          <span class="status-dot" :class="status.server ? 'dot-online' : 'dot-offline'"></span>
+          <span x-text="status.server ? 'Servidor Online' : 'Servidor Offline'"></span>
+        </div>
+
+        <!-- Socket live -->
+        <div x-show="liveConnected" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-950 border border-green-800/60 text-green-400 text-xs">
+          <span class="status-dot dot-online" style="width:6px;height:6px"></span>
+          Live
+        </div>
+
+        <button @click="loadAll()" class="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors" title="Atualizar">
+          <svg class="w-4 h-4" :class="loading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- Orange accent line -->
+    <div class="accent-line h-0.5"></div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-5 py-8 space-y-8">
+
+    <!-- ── STATS ROW ─────────────────────────────────────────────────── -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 animate-slide-up">
+      <template x-for="(stat, i) in stats" :key="i">
+        <div class="glass rounded-2xl p-4 relative overflow-hidden">
+          <div class="absolute top-0 right-0 w-16 h-16 rounded-full opacity-5 blur-xl" :style="`background: ${stat.color}`"></div>
+          <p class="text-xs text-zinc-500 mb-1" x-text="stat.label"></p>
+          <p class="text-2xl font-bold" :style="`color: ${stat.color}`" :key="stat.value" class="count-anim" x-text="stat.value"></p>
+          <p class="text-xs text-zinc-600 mt-0.5" x-text="stat.sub"></p>
+        </div>
+      </template>
+    </div>
+
+    <!-- ── MAIN GRID ──────────────────────────────────────────────────── -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- LEFT: Apps + API ────────────────────────────────────────── -->
+      <div class="lg:col-span-1 space-y-5">
+
+        <!-- Applications -->
+        <div class="glass rounded-2xl p-5 animate-slide-up-d1">
+          <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4">Aplicações</h2>
+          <div class="space-y-2.5">
+            <template x-for="app in apps" :key="app.id">
+              <a
+                :href="app.url" target="_blank"
+                class="glass glass-hover flex items-center gap-3 rounded-xl px-4 py-3 group cursor-pointer no-underline block"
+                :class="!app.checkable ? 'opacity-90' : ''"
+              >
+                <span class="text-xl select-none w-8 text-center" x-text="app.icon"></span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <p class="text-sm font-semibold text-zinc-200 group-hover:text-orange-300 transition-colors" x-text="app.name"></p>
+                    <span x-show="app.badge" class="px-1.5 py-0.5 rounded-md text-xs font-bold"
+                          :class="app.badge === 'HTTPS' ? 'bg-blue-950 text-blue-400 border border-blue-800/50' : 'bg-zinc-800 text-zinc-400'">
+                      <span x-text="app.badge"></span>
+                    </span>
+                  </div>
+                  <p class="text-xs text-zinc-500 truncate" x-text="app.desc"></p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span class="status-dot"
+                        :class="app.checkable
+                          ? (status[app.id] === true ? 'dot-online' : status[app.id] === false ? 'dot-offline' : 'dot-loading')
+                          : 'dot-online'"></span>
+                  <svg class="w-3.5 h-3.5 text-zinc-600 group-hover:text-orange-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                </div>
+              </a>
+            </template>
+          </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="glass rounded-2xl p-5 animate-slide-up-d2">
+          <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4">Sistema</h2>
+          <div class="space-y-2.5">
+            <template x-for="info in sysInfo" :key="info.label">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-zinc-500" x-text="info.label"></span>
+                <span class="text-xs font-mono text-zinc-300" x-text="info.value"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT: Visitors + API ────────────────────────────────── -->
+      <div class="lg:col-span-2 space-y-5">
+
+        <!-- Recent visitors -->
+        <div class="glass rounded-2xl p-5 animate-slide-up-d2">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Últimos Visitantes</h2>
+            <a href="/admin" class="text-xs text-orange-400 hover:text-orange-300 transition-colors flex items-center gap-1">
+              Ver todos
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+
+          <!-- Skeleton -->
+          <div x-show="loadingImages" class="grid-photos">
+            <template x-for="i in 16">
+              <div class="skeleton rounded-xl" style="aspect-ratio:1"></div>
+            </template>
+          </div>
+
+          <!-- Images -->
+          <div x-show="!loadingImages && recentImages.length > 0" class="grid-photos">
+            <template x-for="img in recentImages" :key="img.name">
+              <a :href="'/admin'" class="relative group block">
+                <div class="rounded-xl overflow-hidden bg-zinc-900 visitor-thumb" style="aspect-ratio:1"
+                     :class="img._new ? 'new-pulse ring-2 ring-orange-500' : ''">
+                  <img :src="img.url" :alt="img.name" class="w-full h-full object-contain" loading="lazy" />
+                </div>
+                <div x-show="img._new" class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-orange-500 border-2 border-zinc-900"></div>
+              </a>
+            </template>
+          </div>
+
+          <!-- Empty -->
+          <div x-show="!loadingImages && recentImages.length === 0" class="flex flex-col items-center justify-center py-12 text-center">
+            <span class="text-4xl mb-2">🦴</span>
+            <p class="text-zinc-500 text-sm">Nenhuma foto capturada ainda.</p>
+          </div>
+        </div>
+
+        <!-- API Endpoints -->
+        <div class="glass rounded-2xl p-5 animate-slide-up-d3">
+          <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4">API Endpoints</h2>
+          <div class="space-y-2">
+            <template x-for="ep in endpoints" :key="ep.path">
+              <div class="endpoint-chip rounded-xl px-4 py-3 flex items-start gap-3">
+                <span class="px-2 py-0.5 rounded-md text-xs font-bold font-mono shrink-0 mt-0.5"
+                      :class="{
+                        'method-get':    ep.method === 'GET',
+                        'method-post':   ep.method === 'POST',
+                        'method-delete': ep.method === 'DELETE',
+                      }"
+                      x-text="ep.method"></span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <code class="text-sm text-zinc-200 font-mono" x-text="ep.path"></code>
+                    <span x-show="ep.note" class="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500" x-text="ep.note"></span>
+                  </div>
+                  <p class="text-xs text-zinc-500 mt-0.5" x-text="ep.desc"></p>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Pipeline diagram -->
+        <div class="glass rounded-2xl p-5 animate-slide-up-d4">
+          <h2 class="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-4">Pipeline de Processamento</h2>
+          <div class="flex items-center gap-1 flex-wrap">
+            <template x-for="(step, i) in pipeline" :key="i">
+              <div class="flex items-center gap-1">
+                <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700/60">
+                  <span class="text-base" x-text="step.icon"></span>
+                  <div>
+                    <p class="text-xs font-semibold text-zinc-200 leading-tight" x-text="step.name"></p>
+                    <p class="text-xs text-zinc-600 leading-tight" x-text="step.tech"></p>
+                  </div>
+                </div>
+                <span x-show="i < pipeline.length - 1" class="text-zinc-700 text-xs font-bold">→</span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="text-center text-zinc-700 text-xs pb-4 animate-fade-in">
+      Museu de Ciências e Tecnologia · PUC-RS · <span x-text="new Date().getFullYear()"></span>
+      <span class="mx-2">·</span>
+      Node.js <span x-text="status.nodeVersion || '...'"></span>
+      <span class="mx-2">·</span>
+      Uptime <span x-text="formatUptime(status.uptime)"></span>
+    </div>
+
+  </main>
+
+  <script>
+    function dashboard() {
+      return {
+        loading: false,
+        loadingImages: true,
+        liveConnected: false,
+        clock: '',
+        status: { server: false, booth: null, projection: null, uptime: 0, imageCount: 0, totalSize: 0, nodeVersion: '' },
+        recentImages: [],
+
+        apps: [
+          { id: 'dashboard', icon: '🏠', name: 'Dashboard',      desc: 'Esta página — visão geral do sistema', url: '/',                 badge: '', checkable: false },
+          { id: 'admin',     icon: '🗂',  name: 'Painel de Imagens', desc: 'Gerenciar fotos dos visitantes',     url: '/admin',            badge: '', checkable: false },
+          { id: 'booth',     icon: '📷', name: 'Totem Fotográfico', desc: 'Kiosk Android com câmera e IA',       url: 'http://localhost:5300', badge: '', checkable: true },
+          { id: 'projection',icon: '🦕', name: 'Projeção 3D',    desc: 'Cena Three.js com dinossauros',         url: 'http://localhost:5200', badge: '', checkable: true },
+          { id: 'server',    icon: '⚙️', name: 'API HTTPS',      desc: 'Servidor do totem Android',             url: 'https://localhost:3000', badge: 'HTTPS', checkable: false },
+          { id: 'croptest',  icon: '✂️', name: 'Crop Tester',    desc: 'Ajuste fino dos parâmetros de recorte', url: '/crop-tester',      badge: 'Dev', checkable: false },
+        ],
+
+        endpoints: [
+          { method: 'GET',    path: '/',              desc: 'Este dashboard',                          note: '' },
+          { method: 'GET',    path: '/admin',         desc: 'Painel de gestão de imagens',             note: '' },
+          { method: 'GET',    path: '/crop-tester',   desc: 'Testador de parâmetros de recorte IA',   note: 'Dev' },
+          { method: 'GET',    path: '/visitors',      desc: 'Lista de URLs de todas as fotos processadas', note: 'Unity' },
+          { method: 'GET',    path: '/admin-images',  desc: 'Imagens com metadados (nome, tamanho, data)', note: '' },
+          { method: 'GET',    path: '/api/status',    desc: 'Saúde do sistema e estatísticas em tempo real', note: '' },
+          { method: 'POST',   path: '/upload',        desc: 'Recebe foto do totem, processa IA async', note: 'Booth' },
+          { method: 'GET',    path: '/crop-images',   desc: 'Lista imagens brutas para teste de recorte', note: 'Dev' },
+          { method: 'POST',   path: '/crop-test',     desc: 'Processa recorte com parâmetros customizados', note: 'Dev' },
+          { method: 'DELETE', path: '/uploads/:file', desc: 'Remove imagem processada permanentemente', note: '' },
+        ],
+
+        pipeline: [
+          { icon: '📱', name: 'Captura',    tech: 'Tablet · React' },
+          { icon: '🤳', name: 'Detecção',   tech: 'FaceAPI · TinyFaceDetector' },
+          { icon: '✂️', name: 'Recorte',    tech: 'Landmarks · Shoulder Killer' },
+          { icon: '🪄', name: 'Fundo',      tech: 'IMGLY WASM · AI' },
+          { icon: '📐', name: 'Composição', tech: 'Canvas · 400×400px' },
+          { icon: '📡', name: 'Broadcast',  tech: 'Socket.io · Unity/Web' },
+        ],
+
+        get stats() {
+          return [
+            { label: 'Visitantes Capturados', value: this.status.imageCount, sub: 'fotos processadas', color: '#f97316' },
+            { label: 'Armazenamento',         value: this.formatBytes(this.status.totalSize), sub: 'imagens PNG sem fundo', color: '#a78bfa' },
+            { label: 'Uptime do Servidor',    value: this.formatUptime(this.status.uptime), sub: 'desde o último reinício', color: '#22c55e' },
+            { label: 'Apps Online',           value: [this.status.booth, this.status.projection].filter(Boolean).length + '/2', sub: 'booth + projeção', color: '#38bdf8' },
+          ];
+        },
+
+        get sysInfo() {
+          return [
+            { label: 'Node.js',         value: this.status.nodeVersion || '—' },
+            { label: 'Servidor HTTP',   value: 'localhost:3001' },
+            { label: 'Servidor HTTPS',  value: 'localhost:3000' },
+            { label: 'Totem (Booth)',   value: 'localhost:5300' },
+            { label: 'Projeção',        value: 'localhost:5200' },
+            { label: 'Socket.io',       value: this.liveConnected ? 'Conectado' : 'Desconectado' },
+            { label: 'Última atualização', value: this.clock },
+          ];
+        },
+
+        async init() {
+          this.tickClock();
+          setInterval(() => this.tickClock(), 1000);
+          await this.loadAll();
+          this.setupSocket();
+          setInterval(() => this.loadStatus(), 30000);
+        },
+
+        tickClock() {
+          this.clock = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        },
+
+        async loadAll() {
+          this.loading = true;
+          await Promise.all([this.loadStatus(), this.loadImages()]);
+          this.loading = false;
+        },
+
+        async loadStatus() {
+          try {
+            const res = await fetch('/api/status');
+            if (res.ok) this.status = await res.json();
+          } catch { this.status.server = false; }
+        },
+
+        async loadImages() {
+          this.loadingImages = true;
+          try {
+            const res = await fetch('/admin-images');
+            if (res.ok) {
+              const all = await res.json();
+              this.recentImages = all.slice(0, 24);
+            }
+          } catch {}
+          this.loadingImages = false;
+        },
+
+        setupSocket() {
+          try {
+            const socket = io({ transports: ['websocket', 'polling'] });
+            socket.on('connect',    () => { this.liveConnected = true; });
+            socket.on('disconnect', () => { this.liveConnected = false; });
+            socket.on('new_visitor', async () => {
+              await this.loadImages();
+              await this.loadStatus();
+              if (this.recentImages[0]) {
+                this.recentImages[0]._new = true;
+                setTimeout(() => { if (this.recentImages[0]) this.recentImages[0]._new = false; }, 6000);
+              }
+            });
+          } catch {}
+        },
+
+        formatBytes(bytes) {
+          if (!bytes) return '0 B';
+          if (bytes < 1024)        return bytes + ' B';
+          if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+          return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        },
+
+        formatUptime(s) {
+          if (!s) return '—';
+          const h = Math.floor(s / 3600);
+          const m = Math.floor((s % 3600) / 60);
+          const sec = Math.floor(s % 60);
+          if (h > 0) return `${h}h ${m}m`;
+          if (m > 0) return `${m}m ${sec}s`;
+          return `${sec}s`;
+        },
+      };
+    }
+  </script>
+</body>
+</html>

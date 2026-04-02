@@ -218,9 +218,60 @@ async function trimTransparentRows(buffer) {
   return out.toBuffer('image/png');
 }
 
-// API Routes
-app.get('/', (req, res) => {
-  res.send('Prehistoric Projection Server Running');
+// ─── Rotas de Páginas (URLs limpas) ───────────────────────────────────────────
+const publicDir = path.join(__dirname, 'public');
+
+app.get('/',            (req, res) => res.sendFile(path.join(publicDir, 'dashboard.html')));
+app.get('/dashboard',   (req, res) => res.sendFile(path.join(publicDir, 'dashboard.html')));
+app.get('/admin',       (req, res) => res.sendFile(path.join(publicDir, 'admin.html')));
+app.get('/crop-tester', (req, res) => res.sendFile(path.join(publicDir, 'crop-tester.html')));
+
+// Status de saúde do sistema (usado pelo dashboard)
+app.get('/api/status', async (req, res) => {
+  const checkApp = async (url) => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1500);
+      await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      return true;
+    } catch { return false; }
+  };
+
+  const [booth, projection] = await Promise.all([
+    checkApp('http://localhost:5300'),
+    checkApp('http://localhost:5200'),
+  ]);
+
+  const imageCount = await new Promise(resolve => {
+    fs.readdir(uploadDir, (err, files) => {
+      if (err) return resolve(0);
+      resolve(files.filter(f => f.startsWith('nobg-') && f.endsWith('.png')).length);
+    });
+  });
+
+  const totalSize = await new Promise(resolve => {
+    fs.readdir(uploadDir, (err, files) => {
+      if (err) return resolve(0);
+      const size = files
+        .filter(f => f.startsWith('nobg-') && f.endsWith('.png'))
+        .reduce((sum, f) => {
+          try { return sum + fs.statSync(path.join(uploadDir, f)).size; } catch { return sum; }
+        }, 0);
+      resolve(size);
+    });
+  });
+
+  res.json({
+    server: true,
+    booth,
+    projection,
+    uptime: process.uptime(),
+    imageCount,
+    totalSize,
+    nodeVersion: process.version,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Crop Tester: lista imagens visitor-* disponíveis
