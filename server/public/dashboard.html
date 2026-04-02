@@ -296,9 +296,9 @@
         apps: [
           { id: 'dashboard', icon: '🏠', name: 'Dashboard',      desc: 'Esta página — visão geral do sistema', url: '/',                 badge: '', checkable: false },
           { id: 'admin',     icon: '🗂',  name: 'Painel de Imagens', desc: 'Gerenciar fotos dos visitantes',     url: '/admin',            badge: '', checkable: false },
-          { id: 'booth',     icon: '📷', name: 'Totem Fotográfico', desc: 'Kiosk Android com câmera e IA',       url: 'http://localhost:5300', badge: '', checkable: true },
-          { id: 'projection',icon: '🦕', name: 'Projeção 3D',    desc: 'Cena Three.js com dinossauros',         url: 'http://localhost:5200', badge: '', checkable: true },
-          { id: 'server',    icon: '⚙️', name: 'API HTTPS',      desc: 'Servidor do totem Android',             url: 'https://localhost:3000', badge: 'HTTPS', checkable: false },
+          { id: 'booth',     icon: '📷', name: 'Totem Fotográfico', desc: 'Kiosk Android com câmera e IA',       url: `https://${window.location.hostname}:5300`, badge: 'HTTPS', checkable: true },
+          { id: 'projection',icon: '🦕', name: 'Projeção 3D',    desc: 'Cena Three.js com dinossauros',         url: `http://${window.location.hostname}:5200`, badge: '', checkable: true },
+          { id: 'server',    icon: '⚙️', name: 'API HTTPS',      desc: window.location.hostname === 'localhost' ? 'http://localhost:3001' : `https://${window.location.hostname}:3000`, url: window.location.hostname === 'localhost' ? 'http://localhost:3001' : `https://${window.location.hostname}:3000`, badge: 'HTTPS', checkable: false },
           { id: 'croptest',  icon: '✂️', name: 'Crop Tester',    desc: 'Ajuste fino dos parâmetros de recorte', url: '/crop-tester',      badge: 'Dev', checkable: false },
         ],
 
@@ -334,12 +334,13 @@
         },
 
         get sysInfo() {
+          const host = window.location.hostname;
           return [
             { label: 'Node.js',         value: this.status.nodeVersion || '—' },
-            { label: 'Servidor HTTP',   value: 'localhost:3001' },
-            { label: 'Servidor HTTPS',  value: 'localhost:3000' },
-            { label: 'Totem (Booth)',   value: 'localhost:5300' },
-            { label: 'Projeção',        value: 'localhost:5200' },
+            { label: 'Servidor HTTP',   value: `${host}:3001` },
+            { label: 'Servidor HTTPS',  value: `${host}:3000` },
+            { label: 'Totem (Booth)',   value: `${host}:5300` },
+            { label: 'Projeção',        value: `${host}:5200` },
             { label: 'Socket.io',       value: this.liveConnected ? 'Conectado' : 'Desconectado' },
             { label: 'Última atualização', value: this.clock },
           ];

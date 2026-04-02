@@ -1,16 +1,20 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import basicSsl from '@vitejs/plugin-basic-ssl'
+import fs from 'fs'
+import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    react(),
-    // basicSsl() // Desativado para evitar problemas de Mixed Content e Certificado em ambiente Local
+    react()
   ],
   server: {
     host: '0.0.0.0', // Expose explicitly to IPv4 network
     port: 5300,
-    strictPort: true
+    strictPort: true,
+    https: {
+      key:  fs.readFileSync(path.resolve(__dirname, '../server/server.key')),
+      cert: fs.readFileSync(path.resolve(__dirname, '../server/server.cert')),
+    }
   }
 })

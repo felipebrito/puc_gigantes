@@ -8,9 +8,9 @@ import './BoothApp.css';
 // Server URL - Update this if running on a different machine
 // Server URL - Update this if running on a different machine
 // Usando a porta 3001 (HTTP) para evitar problemas de Certificado SSL em ambiente local
-const SERVER_URL = window.location.hostname === 'localhost' 
+const SERVER_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
   ? 'http://localhost:3001' 
-  : `http://${window.location.hostname}:3001`;
+  : `https://${window.location.hostname}:3000`; // Tablets remotos DEVEM usar HTTPS:3000
 
 function App() {
   const webcamRef = useRef(null);
@@ -32,22 +32,30 @@ function App() {
   const uploadingRef = useRef(false); // Mirror of uploading state — avoids stale closure in setInterval
   const timerRef = useRef(null); // Track the active countdown interval
 
-  // Check connection on load
+  // Check connection periodically to clear the warning bar automatically
   React.useEffect(() => {
-    // ... (existing fetch) ...
-    fetch(SERVER_URL)
-      .then(() => setServerOnline(true))
-      .catch(() => setServerOnline(false));
+    const checkConnection = () => {
+      fetch(`${SERVER_URL}/api/status`)
+        .then((r) => {
+          if (r.ok) setServerOnline(true);
+        })
+        .catch(() => setServerOnline(false));
+    };
 
-    // Load Face API Models
+    checkConnection();
+    const interval = setInterval(checkConnection, 3000); // Tenta a cada 3s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Load Face API Models
+  React.useEffect(() => {
     const loadModels = async () => {
       try {
         console.log("Loading FaceAPI Models...");
-        // Reverted to raw relative absolute path so Capacitor maps it correctly to public/
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
           faceapi.nets.faceExpressionNet.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68Net.loadFromUri('/models') // For precise face contour
+          faceapi.nets.faceLandmark68Net.loadFromUri('/models')
         ]);
         console.log("FaceAPI Models Loaded Successfully");
         setLoadingModels(false);
@@ -320,18 +328,6 @@ function App() {
           animation: 'fadeInOut 3s ease-in-out'
         }}>
           ✅ Foto Enviada!
-        </div>
-      )}
-
-      {!serverOnline && (
-        <div style={{ background: 'orange', color: 'black', padding: '10px', marginBottom: '20px', borderRadius: '8px' }}>
-          ⚠️ Conexão insegura bloqueada!
-          <br />
-          <a href={SERVER_URL} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 'bold' }}>
-            CLIQUE AQUI e aceite o certificado (Avançado -&gt; Ir para...)
-          </a>
-          <br />
-          Depois recarregue esta página.
         </div>
       )}
 

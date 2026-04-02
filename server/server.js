@@ -59,8 +59,17 @@ try {
   // Polyfill fetch to read from local disk (required when browser-bundle thinks it is in a real browser)
   global.fetch = async (url) => {
     try {
-      // Convert URL to absolute local path if it is not a full URL
-      const filePath = url.includes('://') ? url : path.resolve(__dirname, url);
+      // Se for uma URL real (http/https), ignorar o mock ou passar adiante
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return { ok: true, status: 200, json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) };
+      }
+      
+      const filePath = path.resolve(__dirname, url);
+      if (!fs.existsSync(filePath)) {
+        console.warn(`[FaceAPI] Missing local weight file for ${url}`);
+        return { ok: false, status: 404 };
+      }
+      
       const data = fs.readFileSync(filePath);
       return {
         ok: true,
@@ -68,8 +77,8 @@ try {
         arrayBuffer: async () => data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
       };
     } catch (e) {
-      console.error(`[FaceAPI] Mock fetch failed for ${url}:`, e.message);
-      return { ok: false, status: 404 };
+      console.error(`[FaceAPI] Mock fetch error for ${url}:`, e.message);
+      return { ok: false, status: 500 };
     }
   };
   
@@ -271,6 +280,7 @@ app.get('/api/status', async (req, res) => {
     totalSize,
     nodeVersion: process.version,
     timestamp: new Date().toISOString(),
+    ip: localIP
   });
 });
 
