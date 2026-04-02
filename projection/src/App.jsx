@@ -6,10 +6,10 @@ import * as THREE from 'three';
 import io from 'socket.io-client';
 import './App.css';
 
-// Socket connection
+// Socket connection — porta 3001 (HTTP, sem certificado)
 const socket = io(window.location.hostname === 'localhost'
-  ? 'http://localhost:3000'
-  : `http://${window.location.hostname}:3000`);
+  ? 'http://localhost:3001'
+  : `http://${window.location.hostname}:3001`);
 
 // --- Components ---
 
@@ -56,7 +56,7 @@ function Visitor({ id, imageUrl, removeVisitor, customZ = 0 }) {
       speed: (1.0 + Math.random() * 1.5) * direction,
       startX: -25 * direction,
       z: 2 + (Math.random() * 6) + customZ,
-      scale: 1.05 + Math.random() * 0.15, // Targeting ~1.75m height
+      scale: 1.05 + Math.random() * 0.15,
       walkStyle: WALK_STYLES[Math.floor(Math.random() * WALK_STYLES.length)],
       clothingUrl: CLOTHING_TEXTURES[Math.floor(Math.random() * CLOTHING_TEXTURES.length)]
     };
@@ -80,6 +80,7 @@ function Visitor({ id, imageUrl, removeVisitor, customZ = 0 }) {
           walkStyle={config.walkStyle}
           scale={config.scale}
           speed={Math.abs(config.speed) * 2.5}
+          direction={config.direction}
         />
       </Billboard>
     </group>
@@ -119,8 +120,8 @@ function Scene() {
   const MAX_VISITORS = 15;
 
   const serverUrl = window.location.hostname === 'localhost'
-    ? 'http://localhost:3000/visitors'
-    : `http://${window.location.hostname}:3000/visitors`;
+    ? 'http://localhost:3001/visitors'
+    : `http://${window.location.hostname}:3001/visitors`;
 
   useEffect(() => {
     const onConnect = () => setConnected(true);
@@ -129,20 +130,29 @@ function Scene() {
     socket.on('disconnect', onDisconnect);
     if (socket.connected) onConnect();
 
-    fetch(serverUrl)
-      .then(res => res.json())
-      .then(files => {
-        if (files && files.length > 0) {
-          setHistory(files);
-          setActivePool(files.slice(0, 10));
-          setApiError(false);
-        }
-      })
-      .catch(() => setApiError(true));
+    // Polling periódico equivalente ao PhotoProvider da Unity (a cada 10s)
+    const poll = () => {
+      fetch(serverUrl)
+        .then(res => res.json())
+        .then(files => {
+          if (files && files.length > 0) {
+            setHistory(prev => {
+              const merged = Array.from(new Set([...prev, ...files]));
+              return merged;
+            });
+            setApiError(false);
+          }
+        })
+        .catch(() => setApiError(true));
+    };
+
+    poll();
+    const pollInterval = setInterval(poll, 10000);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
+      clearInterval(pollInterval);
     };
   }, []);
 

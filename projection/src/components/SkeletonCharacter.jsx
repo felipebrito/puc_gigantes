@@ -11,7 +11,8 @@ export function SkeletonCharacter({
     stride = 0.4,
     bounce = 0.08,
     scale = 1,
-    walkStyle = "normal"
+    walkStyle = "normal",
+    direction = 1   // 1 = direita, -1 = esquerda (espelha o personagem)
 }) {
     const hipsRef = useRef();
     const legLRef = useRef();
@@ -77,7 +78,7 @@ export function SkeletonCharacter({
     const skinColor = '#FAD7A0';
 
     return (
-        <group position={position} scale={[scale, scale, 1]}>
+        <group position={position} scale={[scale * direction, scale, 1]}>
             <group ref={hipsRef} position={[0, 0.8, 0]}>
 
                 {/* TORSO - slightly back */}
