@@ -53,7 +53,7 @@ O **GameManager** (único GameObject de controle) carrega: `ProjectionUI`, `Came
 
 ### `VisitorSpawner.cs`
 > Gerencia o ciclo de vida dos visitantes: pool de texturas, spawn e destruição.
-
+``
 | Campo | Valor padrão | Descrição |
 |---|---|---|
 | `interval` | `2.0f` | Segundos entre spawns |
@@ -195,6 +195,37 @@ Detecta pipeline automaticamente: **URP Lit → URP Unlit → Standard Shader**.
   - Bob vertical: `sin(t × 0.5) × 0.0005`
 
 `SetupGround()` e `SetupGrid()` existem mas não são chamados na versão atual.
+
+---
+
+### `SpriteSheetExporter.cs`
+> **Ferramenta de Editor.** Exporta personagem CC2D como sprite sheet PNG para uso no Three.js.
+> Acesso: Unity menu → **Tools → Sprite Sheet Exporter**
+
+| Campo | Padrão | Descrição |
+|---|---|---|
+| `animStateName` | `"Walk"` | Estado do Animator a capturar |
+| `frameCount` | `12` | Frames por ciclo |
+| `cols` | `4` | Colunas no sheet (layout 4×3) |
+| `frameWidth/Height` | `256×512` | Resolução por frame |
+| `paddingFactor` | `0.15` | Margem ao redor do personagem (15%) |
+| `outputFolder` | `projection/public/sprites/` | Destino automático |
+
+**Botões:**
+- **Auto-fit + Exportar** — amostra os bounds reais do personagem em 32 frames da animação, calcula `cameraSize` e `offsetY` automaticamente para encaixar o personagem inteiro, exporta com nome canônico
+- **Exportar com configuração manual** — usa os valores dos campos da janela
+
+**Nome gerado:** `character_walk_[prefab]_[cols]x[rows]_[frames]f.png`
+
+**Fluxo interno do Auto-fit:**
+1. Instancia o prefab fora da câmera principal (posição `x=999`)
+2. Amostra `Renderer.bounds` em 32 instantes do ciclo de animação
+3. Calcula `minY/maxY/minX/maxX` → `centerY`, `fitSize` (respeitando aspect ratio do frame)
+4. Aplica `paddingFactor` e salva PNG + JSON de metadados
+5. Abre a pasta de saída automaticamente
+
+> O arquivo gerado vai direto para `projection/public/sprites/` — pasta pública do Vite.
+> O Three.js carrega sem nenhuma etapa manual adicional.
 
 ---
 
