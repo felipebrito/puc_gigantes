@@ -248,14 +248,14 @@ function App() {
     if (!det) return null;
     const { x, y, width, height } = det.detection.box;
     const jawPoints = det.landmarks.getJawOutline();
-    const chinY = Math.max(...jawPoints.map(p => p.y));
+    const chinY = jawPoints[8].y;
     const vw = video.videoWidth, vh = video.videoHeight;
     // Normaliza para 0-1 relativo ao video
     return {
-      left:   Math.max(0, (x - width  * 0.15) / vw),
-      top:    Math.max(0, (y - height * 0.45) / vh),
-      right:  Math.min(1, (x + width  * 1.15) / vw),
-      bottom: Math.min(1, (chinY + height * 0.15) / vh),
+      left:   Math.max(0, (x - width  * 0.25) / vw),
+      top:    Math.max(0, (y - height * 0.6) / vh),
+      right:  Math.min(1, (x + width  * 1.25) / vw),
+      bottom: Math.min(1, (chinY + height * 0.5) / vh),
       vw, vh
     };
   };

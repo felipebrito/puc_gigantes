@@ -206,22 +206,22 @@ async function trimTransparentRows(buffer) {
   const faceW = right - left + 1;
   const faceH = bottom - top + 1;
   
-  // Criar um quadrado de 1:1 baseado na maior dimensão
+  // Criar um quadrado de 1:1 baseado na maior dimensão + respiro
   const maxDim = Math.max(faceW, faceH);
-  const squareSize = maxDim; 
-  const scale = 400 / squareSize;
-
+  const squareSize = maxDim * 1.25; // Garante que o rosto ocupe 80% da imagem (min 75% pedido)
+  // 3. Criar resultado 400x400 com o rosto fitado (ESTILO ORIGINAL 100%)
   const out = createCanvas(400, 400);
   const octx = out.getContext('2d');
   octx.clearRect(0, 0, 400, 400);
 
-  // Calcular dimensões de destino (redimensionadas)
+  // Escala para preencher 95% dos 400x400 (Deixa um respiro profissional no topo)
+  const scale = (400 / Math.max(faceW, faceH)) * 0.95;
+  
   const destW = faceW * scale;
   const destH = faceH * scale;
   const destX = (400 - destW) / 2;
-  const destY = (400 - destH) / 2;
+  const destY = 400 - destH; // ALINHAMENTO NA BASE (Importante!)
 
-  // Desenhar apenas a região do rosto, centralizada no destino 400x400
   octx.drawImage(canvas, left, top, faceW, faceH, destX, destY, destW, destH);
 
   return out.toBuffer('image/png');
@@ -296,7 +296,7 @@ app.get('/crop-images', (req, res) => {
 // Crop Tester: processa landmarks + removeBackground e retorna URL
 app.post('/crop-test', express.json(), async (req, res) => {
   try {
-    const { file, topPad = 0.5, jawPad = 0.0, earPad = 0.15, neckPad = 0.7, blur = 12 } = req.body;
+    const { file, topPad = 0.5, jawPad = 0.0, earPad = 0.18, neckPad = 0.65, blur = 20 } = req.body;
     const inputPath = path.join(uploadDir, file);
     if (!fs.existsSync(inputPath)) return res.status(404).send('Arquivo não encontrado');
 
@@ -469,11 +469,9 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
 
   // 2. Processa assincronamente a IA de Recorte usando a CPU bruta do MacOS (Node)
   try {
-    const topPad = 0.5, jawPad = 0.05, earPad = 0.1, neckPad = 0.0;
+    const rawImg = await loadImage(rawPath);
     console.log(`[Processing] Iniciando Recorte IA de Alta Precisão para: ${rawFileName}`);
 
-    const rawImg = await loadImage(rawPath);
-    
     // 1. Detectar Landmarks
     const canvas = createCanvas(rawImg.width, rawImg.height);
     const ctx = canvas.getContext('2d');
@@ -482,56 +480,59 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
     
     let buffer;
     if (detections) {
-      console.log(`[Processing] Rosto detectado. Aplicando "Shoulder Killer BIOMETRIC".`);
+      console.log(`[Processing] Rosto detectado. Aplicando estratégia "Shoulder Killer" 2026.`);
       const jawline = detections.landmarks.getJawOutline();
       const box = detections.detection.box;
 
-      const blur = 8;
+      // Parâmetros do "Shoulder Killer" (Conforme 17:52)
+      const topPad = 0.5, jawPad = 0.0, earPad = 0.18, neckPad = 0.7, blur = 15;
 
-      // Create Face-Only Mask (High Precision)
+      // 2. Obter Máscara Facial (Landmarks)
       const maskCanvas = createCanvas(rawImg.width, rawImg.height);
       const mctx = maskCanvas.getContext('2d');
+      const getPt = (i) => {
+          const distFromCenter = Math.abs(i - 8) / 8;
+          const oEar = box.width * earPad;
+          const oTaper = neckPad;
+          const currentSidePad = oEar * (1 - (oTaper * 1.5 * (1 - Math.pow(distFromCenter, 0.5))));
+          let hShift = (i < 8) ? -currentSidePad : (i > 8 ? currentSidePad : 0);
+          let sShaveY = 0;
+          if (oTaper > 0.1 && (i < 6 || i > 10)) {
+              sShaveY = -box.height * (oTaper * 0.45 * (1 - distFromCenter));
+          }
+          return { x: jawline[i].x + hShift, y: jawline[i].y + (box.height * jawPad) + sShaveY };
+      };
       mctx.fillStyle = 'white';
-      
       mctx.beginPath();
-      // Start slightly above left ear
-      mctx.moveTo(jawline[0].x, jawline[0].y - 50);
-      
-      // Follow the jawline tightly
-      for (let i = 0; i < jawline.length; i++) {
-        // Taper effect: shift points 8-16 slightly inward if they are low
-        const pt = jawline[i];
-        mctx.lineTo(pt.x, pt.y);
+      const startPt = getPt(0); mctx.moveTo(startPt.x, startPt.y);
+      for (let i = 0; i < jawline.length - 1; i++) {
+          const pt = getPt(i); const next = getPt(i + 1);
+          mctx.quadraticCurveTo(pt.x, pt.y, (pt.x + next.x)/2, (pt.y + next.y)/2);
       }
-      
-      // Complete the path above the head (Keep only face content)
-      mctx.lineTo(jawline[16].x, jawline[16].y - 50);
-      mctx.lineTo(jawline[16].x, 0);
-      mctx.lineTo(jawline[0].x, 0);
+      const endPt = getPt(16);
+      mctx.lineTo(endPt.x, endPt.y); mctx.lineTo(rawImg.width, endPt.y);
+      mctx.lineTo(rawImg.width, 0); mctx.lineTo(0, 0); mctx.lineTo(0, startPt.y);
       mctx.closePath();
-      
       mctx.filter = `blur(${blur}px)`;
       mctx.fill();
 
-      // 3. Obter Máscara de Fundo (AI) - Full Size (usando type: 'mask' para manter dimensões!)
-      console.log(`[Processing] Gerando máscara de fundo para ${rawFileName}...`);
+      // 3. Obter Máscara de Fundo (AI)
       const noBgBlob = await removeBackground(rawPath, { output: { format: 'image/png', type: 'mask' } });
       const aiMaskImg = await loadImage(Buffer.from(await noBgBlob.arrayBuffer()));
 
-      // 4. Combinar as Máscaras e aplicar na Imagem Original (Garante alinhamento 100%)
+      // 4. Combinar e Aplicar
       const finalCanvas = createCanvas(rawImg.width, rawImg.height);
       const fctx = finalCanvas.getContext('2d');
-      fctx.drawImage(rawImg, 0, 0); // Desenha original
+      fctx.drawImage(rawImg, 0, 0);
       fctx.globalCompositeOperation = 'destination-in';
-      fctx.drawImage(aiMaskImg, 0, 0); // Corta fundo (AI)
-      fctx.drawImage(maskCanvas, 0, 0); // Corta ombros/pescoço (Landmarks)
+      fctx.drawImage(aiMaskImg, 0, 0);
+      fctx.drawImage(maskCanvas, 0, 0);
       
       buffer = await trimTransparentRows(finalCanvas.toBuffer('image/png'));
-
     } else {
-      console.warn(`[Processing] Nenhum rosto detectado em ${rawFileName}. ABORTANDO.`);
+      console.warn(`[Processing] Nenhum rosto detectado.`);
       if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
-      return res.status(400).send("Nenhum rosto detectado. Foto ignorada.");
+      return; 
     }
 
     const procFileName = `nobg-${rawFileName.replace(/\.[^.]+$/, '.png')}`;
@@ -539,23 +540,18 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
     fs.writeFileSync(procPath, buffer);
     console.log(`[Processing] ✂️  Recorte mágico finalizado: ${procFileName}`);
 
-    // Broadcast para a Cenografia Virtual (Projection/Unity)
+    // Broadcast
     io.emit('new_visitor', {
       id: Date.now(),
       imageUrl: `http://${req.headers.host.split(':')[0]}:3001/uploads/${procFileName}` 
     });
 
-    // Deletar o arquivo original BRUTO após processamento bem-sucedido
-    if (fs.existsSync(rawPath)) {
-      console.log(`[Cleanup] Deletando arquivo bruto: ${rawFileName}`);
-      fs.unlinkSync(rawPath);
-    }
+    if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
 
   } catch (error) {
-    console.error(`[Processing] Falha no servidor do Recorte IA para ${rawFileName}. ABORTANDO.`, error);
+    console.error(`[Processing] Falha no servidor do Recorte IA para ${rawFileName}.`, error);
     if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
-    // Não emitimos nada para a Unity para ignorar a foto silenciosamente em caso de erro
-    res.status(500).send("Erro no processamento IA. Foto ignorada.");
+    // Aqui NÃO enviamos res.status(500) pois a resposta já foi enviada no início
   }
 });
 
