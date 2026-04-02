@@ -5,6 +5,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [0.6.2] — 2026-04-02
+
+### Corrigido
+- **Collar/ombro visível nos lados do rosto** — substituído gradiente horizontal pelo "Jaw Killer": `destination-out` que segue a curva real dos 17 pontos do jawline (+ 8% de margem), com blur 6px. O gradiente horizontal anterior falhava nos lados porque `jawline[0]`/`jawline[16]` ficam em Y menor que o queixo.
+- **Rosto pequeno ou deslocado conforme posição da cabeça** — `trimTransparentRows` agora recebe o `box` da detecção e limita a varredura de pixels a uma janela expandida em torno do rosto (±35% H, −70%/+110% V). Artefatos da remoção AI fora dessa janela são ignorados.
+
+### Documentação
+- `server/PIPELINE_CROP.md` expandido com a etapa "Jaw Killer", tabela de parâmetros completa e 5 armadilhas documentadas.
+
+---
+
 ## [0.6.1] — 2026-04-02
 
 ### Corrigido

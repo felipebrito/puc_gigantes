@@ -519,6 +519,26 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
       mctx.filter = `blur(${blur}px)`;
       mctx.fill();
 
+      // JAW KILLER: apaga tudo abaixo do jawline seguindo a curva real do rosto.
+      // Usa destination-out com blur suave para não criar borda dura.
+      // Margem de 8% de box.height abaixo dos pontos para preservar o queixo.
+      const jawMargin = box.height * 0.08;
+      mctx.filter = 'blur(6px)';
+      mctx.globalCompositeOperation = 'destination-out';
+      mctx.fillStyle = 'black';
+      mctx.beginPath();
+      mctx.moveTo(0, rawImg.height);
+      mctx.lineTo(0, jawline[0].y + jawMargin);
+      for (let i = 0; i < jawline.length; i++) {
+          mctx.lineTo(jawline[i].x, jawline[i].y + jawMargin);
+      }
+      mctx.lineTo(rawImg.width, jawline[16].y + jawMargin);
+      mctx.lineTo(rawImg.width, rawImg.height);
+      mctx.closePath();
+      mctx.fill();
+      mctx.filter = 'none';
+      mctx.globalCompositeOperation = 'source-over';
+
       // 3. Obter Máscara de Fundo (AI)
       const noBgBlob = await removeBackground(rawPath, { output: { format: 'image/png', type: 'mask' } });
       const aiMaskImg = await loadImage(Buffer.from(await noBgBlob.arrayBuffer()));
