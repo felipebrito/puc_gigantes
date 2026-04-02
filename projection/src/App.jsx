@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Text, Billboard, useGLTF, Environment, Sky, Html, Grid } from '@react-three/drei';
-import { useControls, button } from 'leva';
+import { Text, Billboard, useGLTF, Environment, Sky, Html, Grid, useTexture } from '@react-three/drei';
+import { GUI } from 'lil-gui';
 import * as THREE from 'three';
+import { EffectComposer, DepthOfField, BrightnessContrast, HueSaturation, Vignette, Bloom, Noise } from '@react-three/postprocessing';
 import io from 'socket.io-client';
 import './App.css';
 
@@ -38,14 +39,13 @@ function Dinosaur() {
 
 import { SpriteCharacter } from './components/SpriteCharacter';
 
-function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfig }) {
+function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfigRef }) {
   const ref = useRef();
-  // Velocidade de animação proporcional à velocidade de caminhada
   useFrame((_, delta) => {
     if (!ref.current) return;
     ref.current.position.x += moveConfig.speed * delta;
-    if ((moveConfig.direction === 1  && ref.current.position.x >  22) ||
-        (moveConfig.direction === -1 && ref.current.position.x < -22)) {
+    if ((moveConfig.direction === 1 && ref.current.position.x > 22) ||
+      (moveConfig.direction === -1 && ref.current.position.x < -22)) {
       removeVisitor(id);
     }
   });
@@ -57,11 +57,12 @@ function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfig }) {
           faceUrl={imageUrl}
           scale={moveConfig.scale}
           direction={-moveConfig.direction}
-          spriteConfig={spriteConfig}
+          phaseOffset={moveConfig.phaseOffset ?? 0}
+          spriteConfigRef={spriteConfigRef}
         />
-        {spriteConfig?.showDebug && (
+        {spriteConfigRef?.current?.showDebug && (
           <Text
-            position={[0, (spriteConfig.bodyH ?? 2.2) * moveConfig.scale + 0.2, 0]}
+            position={[0, (spriteConfigRef.current.bodyH ?? 2.2) * moveConfig.scale + 0.2, 0]}
             fontSize={0.13}
             color="yellow"
             outlineWidth={0.015}
@@ -76,6 +77,43 @@ function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfig }) {
   );
 }
 
+const PRESET_KEY = 'gigantes_preset_last';
+
+const CONFIG_VERSION = 3;
+
+const DEFAULT_CONFIG = {
+  _v: CONFIG_VERSION,
+  // Sprite
+  fps: 14, bodyH: 2.0, headYRatio: 0.82, headSize: 0.54, headXOffset: 0.0,
+  headBob: true, headBobAmp: 0.005,
+  scaleMin: 1.2, scaleMax: 1.4,
+  speedMin: 0.8, speedMax: 1.2,
+  spawnInterval: 2.5, showDebug: false,
+  // Cores
+  enableColors: false, brightness: 0, contrast: 0, hue: 0, saturation: 0,
+  // Bloom
+  enableBloom: false, bloomIntensity: 0.5, bloomLuminanceThreshold: 0.9,
+  // Vignette
+  enableVignette: false, vignetteDarkness: 0.5, vignetteOffset: 0.3,
+  // Noise
+  enableNoise: false, noiseOpacity: 0.15,
+  // DoF
+  enableDof: false, dofTargetZ: 0, dofFocalLength: 0.02, dofBokehScale: 2,
+};
+
+function loadSavedConfig() {
+  try {
+    const raw = localStorage.getItem(PRESET_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Discard saves from older versions
+      if (parsed._v === CONFIG_VERSION) return { ...DEFAULT_CONFIG, ...parsed };
+      console.log('[Gigantes] Preset desatualizado — usando padrões');
+    }
+  } catch {}
+  return { ...DEFAULT_CONFIG };
+}
+
 function Scene() {
   const [visitors, setVisitors] = useState([]);
   const [connected, setConnected] = useState(false);
@@ -83,46 +121,122 @@ function Scene() {
   const activePoolRef = useRef([]);
   const spawnRef = useRef(null);
 
-  const spriteConfig = useControls('Personagem Sprite', {
-    fps:           { value: 14,   min: 1,    max: 24,  step: 1,    label: 'FPS animação' },
-    bodyH:         { value: 2.0,  min: 0.5,  max: 6.0, step: 0.1,  label: 'Altura corpo' },
-    headYRatio:    { value: 0.82, min: 0.5,  max: 1.0, step: 0.01, label: 'Posição Y cabeça' },
-    headSize:      { value: 0.54, min: 0.1,  max: 1.5, step: 0.02, label: 'Tamanho foto' },
-    headXOffset:   { value: 0.0,  min: -0.5, max: 0.5, step: 0.01, label: 'Offset X cabeça' },
-    headBob:       { value: true,                                    label: 'Movimento cabeça' },
-    headBobAmp:    { value: 0.0,  min: 0.0,  max: 0.2, step: 0.005,label: 'Amplitude bob' },
-    scaleMin:      { value: 1.2,  min: 0.3,  max: 3.0, step: 0.1,  label: 'Escala mín' },
-    scaleMax:      { value: 1.4,  min: 0.3,  max: 3.0, step: 0.1,  label: 'Escala máx' },
-    speedMin:      { value: 0.8,  min: 0.1,  max: 8.0, step: 0.1,  label: 'Vel. mín (u/s)' },
-    speedMax:      { value: 1.2,  min: 0.1,  max: 8.0, step: 0.1,  label: 'Vel. máx (u/s)' },
-    spawnInterval: { value: 0.1,  min: 0.1,  max: 10,  step: 0.1,  label: 'Intervalo spawn (s)' },
-    showDebug:     { value: false,                                   label: 'Labels debug' },
-    'Adicionar visitante': button(() => spawnRef.current?.()),
-    'Remover todos':       button(() => setVisitors([])),
-  });
+  const [cfg, setCfg] = useState(loadSavedConfig);
+  const cfgRef = useRef(cfg);
+  useEffect(() => { cfgRef.current = cfg; }, [cfg]);
 
-  const { viewMode } = useControls('Câmera Presets', {
-    viewMode: {
-      options: {
-        '🎬 Cinemática': 'Cinematic',
-        '📐 Escala (Lado)': 'SideScale',
-        '📏 Comparação': 'Comparison',
-        '🚁 Drone': 'Top',
-        '🦖 Foco Dino': 'DinoFocus',
-        '🕹️ Controle Livre': 'Free'
+  // Auto-save on any change
+  useEffect(() => {
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(cfg)); } catch {}
+  }, [cfg]);
+
+  // Build lil-gui panel once
+  useEffect(() => {
+    const gui = new GUI({ title: 'Configurações' });
+    const proxy = { ...cfgRef.current };
+    const sync = (key) => (v) => {
+      proxy[key] = v;
+      cfgRef.current = { ...cfgRef.current, [key]: v }; // imediato — sem esperar React
+      setCfg(prev => ({ ...prev, [key]: v }));
+    };
+
+    const sprite = gui.addFolder('Personagem Sprite');
+    sprite.add(proxy, 'fps', 1, 24, 1).name('FPS animação').onChange(sync('fps'));
+    sprite.add(proxy, 'bodyH', 0.5, 6.0, 0.1).name('Altura corpo').onChange(sync('bodyH'));
+    sprite.add(proxy, 'headYRatio', 0.5, 1.0, 0.01).name('Posição Y cabeça').onChange(sync('headYRatio'));
+    sprite.add(proxy, 'headSize', 0.1, 1.5, 0.01).name('Tamanho foto').onChange(sync('headSize'));
+    sprite.add(proxy, 'headXOffset', -0.5, 0.5, 0.01).name('Offset X cabeça').onChange(sync('headXOffset'));
+    sprite.add(proxy, 'headBob').name('Movimento cabeça').onChange(sync('headBob'));
+    sprite.add(proxy, 'headBobAmp', 0.0, 0.02, 0.0001).name('Amplitude bob').onChange(sync('headBobAmp'));
+    sprite.add(proxy, 'scaleMin', 0.3, 3.0, 0.05).name('Escala mín').onChange(sync('scaleMin'));
+    sprite.add(proxy, 'scaleMax', 0.3, 3.0, 0.05).name('Escala máx').onChange(sync('scaleMax'));
+    sprite.add(proxy, 'speedMin', 0.1, 8.0, 0.1).name('Vel. mín (u/s)').onChange(sync('speedMin'));
+    sprite.add(proxy, 'speedMax', 0.1, 8.0, 0.1).name('Vel. máx (u/s)').onChange(sync('speedMax'));
+    sprite.add(proxy, 'spawnInterval', 0.5, 10, 0.5).name('Intervalo spawn (s)').onChange(sync('spawnInterval'));
+    sprite.add(proxy, 'showDebug').name('Labels debug').onChange(sync('showDebug'));
+    sprite.add({ adicionar: () => spawnRef.current?.() }, 'adicionar').name('▶ Adicionar visitante');
+    sprite.add({ remover: () => setCfg(prev => { setVisitors([]); return prev; }) }, 'remover').name('✕ Remover todos');
+
+    const fx = gui.addFolder('Pós-Processamento');
+
+    const cores = fx.addFolder('Cores');
+    cores.add(proxy, 'enableColors').name('Ativar').onChange(sync('enableColors'));
+    cores.add(proxy, 'brightness', -1, 1, 0.001).name('Brilho').onChange(sync('brightness'));
+    cores.add(proxy, 'contrast', -1, 1, 0.001).name('Contraste').onChange(sync('contrast'));
+    cores.add(proxy, 'hue', -Math.PI, Math.PI, 0.001).name('Matiz').onChange(sync('hue'));
+    cores.add(proxy, 'saturation', -1, 1, 0.001).name('Saturação').onChange(sync('saturation'));
+
+    const bloom = fx.addFolder('Bloom');
+    bloom.add(proxy, 'enableBloom').name('Ativar').onChange(sync('enableBloom'));
+    bloom.add(proxy, 'bloomIntensity', 0, 5, 0.01).name('Intensidade').onChange(sync('bloomIntensity'));
+    bloom.add(proxy, 'bloomLuminanceThreshold', 0, 1, 0.001).name('Threshold').onChange(sync('bloomLuminanceThreshold'));
+
+    const vignette = fx.addFolder('Vignette');
+    vignette.add(proxy, 'enableVignette').name('Ativar').onChange(sync('enableVignette'));
+    vignette.add(proxy, 'vignetteDarkness', 0, 1, 0.001).name('Escurecimento').onChange(sync('vignetteDarkness'));
+    vignette.add(proxy, 'vignetteOffset', 0, 1, 0.001).name('Offset').onChange(sync('vignetteOffset'));
+
+    const noise = fx.addFolder('Noise (Film Grain)');
+    noise.add(proxy, 'enableNoise').name('Ativar').onChange(sync('enableNoise'));
+    noise.add(proxy, 'noiseOpacity', 0, 1, 0.001).name('Opacidade').onChange(sync('noiseOpacity'));
+
+    const dof = fx.addFolder('Profundidade (DoF)');
+    dof.add(proxy, 'enableDof').name('Ativar').onChange(sync('enableDof'));
+    dof.add(proxy, 'dofTargetZ', -20, 15, 0.1).name('Z Target (foco)').onChange(sync('dofTargetZ'));
+    dof.add(proxy, 'dofFocalLength', 0, 0.1, 0.0001).name('Focal Length').onChange(sync('dofFocalLength'));
+    dof.add(proxy, 'dofBokehScale', 0, 30, 0.01).name('Bokeh Scale').onChange(sync('dofBokehScale'));
+
+    // Presets
+    const presets = gui.addFolder('Presets');
+    const presetProxy = { nome: 'preset1' };
+    presets.add(presetProxy, 'nome').name('Nome do preset');
+    presets.add({
+      salvar: () => {
+        const key = `gigantes_preset_${presetProxy.nome}`;
+        localStorage.setItem(key, JSON.stringify(cfgRef.current));
+        alert(`Preset "${presetProxy.nome}" salvo!`);
       }
-    }
-  });
+    }, 'salvar').name('💾 Salvar preset');
+    presets.add({
+      carregar: () => {
+        const key = `gigantes_preset_${presetProxy.nome}`;
+        const raw = localStorage.getItem(key);
+        if (!raw) { alert(`Preset "${presetProxy.nome}" não encontrado.`); return; }
+        const parsed = JSON.parse(raw);
+        Object.assign(proxy, parsed);
+        gui.controllersRecursive().forEach(c => c.updateDisplay());
+        setCfg({ ...DEFAULT_CONFIG, ...parsed });
+      }
+    }, 'carregar').name('📂 Carregar preset');
+    presets.add({
+      exportar: () => {
+        const blob = new Blob([JSON.stringify(cfgRef.current, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${presetProxy.nome}.json`;
+        a.click();
+      }
+    }, 'exportar').name('⬇️ Exportar JSON');
+    presets.add({
+      resetar: () => {
+        Object.assign(proxy, DEFAULT_CONFIG);
+        gui.controllersRecursive().forEach(c => c.updateDisplay());
+        setCfg({ ...DEFAULT_CONFIG });
+      }
+    }, 'resetar').name('↩️ Resetar padrão');
 
-  const orbitRef = useRef();
+    return () => gui.destroy();
+  }, []);
 
-  const cameraTargets = useMemo(() => ({
-    Cinematic: { pos: [0, 0, 45], target: [0, 0, 0] },
-    SideScale: { pos: [8, 0, 35], target: [5, 0, 0] },
-    Comparison: { pos: [0, -0.5, 40], target: [0, 0, 0] },
-    Top: { pos: [0, 40, 5], target: [0, 0, 0] },
-    DinoFocus: { pos: [5, 5, 30], target: [5, 3, -8] }
-  }), []);
+  // Aliases para manter compatibilidade com o resto do código
+  const spriteConfig = cfg;
+  const effectsConfig = cfg;
+
+  // Fixa a câmera na posição cinematográfica
+  useEffect(() => {
+    camera.position.set(0, 0, 45);
+    camera.lookAt(0, 0, 0);
+  }, [camera]);
 
   const [history, setHistory] = useState([]);
   const [apiError, setApiError] = useState(false);
@@ -146,7 +260,8 @@ function Scene() {
         .then(files => {
           if (files && files.length > 0) {
             setHistory(prev => Array.from(new Set([...prev, ...files])));
-            // Atualiza o pool imediatamente com as fotos reais do servidor
+            // Preload textures so first spawn has no flicker
+            files.forEach(url => useTexture.preload(url));
             setActivePool(files.slice(0, 8));
             setApiError(false);
           }
@@ -179,21 +294,20 @@ function Scene() {
     return () => clearInterval(interval);
   }, [history]);
 
-  const spriteConfigRef = useRef(spriteConfig);
-  useEffect(() => { spriteConfigRef.current = spriteConfig; }, [spriteConfig]);
+  const spriteConfigRef = cfgRef;
   const lastSpawnRef = useRef(0);
 
   const makeMoveConfig = useCallback(() => {
-    const cfg       = spriteConfigRef.current;
+    const cfg = spriteConfigRef.current;
     const direction = Math.random() > 0.5 ? 1 : -1;
-    const speed     = (cfg.speedMin + Math.random() * (cfg.speedMax - cfg.speedMin)) * direction;
-    const scale     = cfg.scaleMin  + Math.random() * (cfg.scaleMax  - cfg.scaleMin);
-    return { direction, speed, scale, startX: -25 * direction, z: 2 + Math.random() * 6 };
+    const speed = (cfg.speedMin + Math.random() * (cfg.speedMax - cfg.speedMin)) * direction;
+    const scale = cfg.scaleMin + Math.random() * (cfg.scaleMax - cfg.scaleMin);
+    return { direction, speed, scale, startX: -5 * direction, z: 2 + Math.random() * 6, phaseOffset: Math.random() * Math.PI * 2 };
   }, []);
 
   const spawnOne = useCallback((imageUrl) => {
     const pool = activePoolRef.current;
-    const url  = imageUrl ?? (pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : null);
+    const url = imageUrl ?? (pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : null);
     if (!url) { console.warn('[Spawn] Pool vazio — faça uma foto no booth primeiro'); return; }
     setVisitors(prev => [...prev, {
       id: Date.now() + Math.random(),
@@ -206,13 +320,13 @@ function Scene() {
   useEffect(() => { spawnRef.current = spawnOne; }, [spawnOne]);
 
   useFrame((state) => {
-    const now      = state.clock.elapsedTime;
+    const now = state.clock.elapsedTime;
     const interval = spriteConfigRef.current.spawnInterval ?? 2.0;
     if (visitors.length < MAX_VISITORS &&
-        activePoolRef.current.length > 0 &&
-        now - lastSpawnRef.current >= interval) {
+      activePoolRef.current.length > 0 &&
+      now - lastSpawnRef.current >= interval) {
       lastSpawnRef.current = now;
-      const pool  = activePoolRef.current;
+      const pool = activePoolRef.current;
       const photo = pool[Math.floor(Math.random() * pool.length)];
       setVisitors(prev => [...prev, {
         id: Date.now() + Math.random(),
@@ -221,12 +335,7 @@ function Scene() {
       }]);
     }
 
-    if (viewMode !== 'Free' && cameraTargets[viewMode]) {
-      const { pos, target } = cameraTargets[viewMode];
-      state.camera.position.lerp(new THREE.Vector3(...pos), 0.05);
-      orbitRef.current?.target.lerp(new THREE.Vector3(...target), 0.05);
-      orbitRef.current?.update();
-    }
+    // Câmera é estática e fixa.
   });
 
   const removeVisitor = (id) => {
@@ -236,6 +345,7 @@ function Scene() {
   useEffect(() => {
     const handleNewVisitor = (data) => {
       const url = data.imageUrl;
+      useTexture.preload(url); // preload antes de spawnar
       setHistory(h => [...h, url]);
       setActivePool(prev => Array.from(new Set([...prev, url])).slice(0, 8));
       // Booth → personagem entra imediatamente na cena
@@ -248,6 +358,8 @@ function Scene() {
     socket.on('new_visitor', handleNewVisitor);
     return () => socket.off('new_visitor', handleNewVisitor);
   }, []);
+
+  const dofTargetVector = useMemo(() => new THREE.Vector3(0, 0, effectsConfig.dofTargetZ), [effectsConfig.dofTargetZ]);
 
   return (
     <>
@@ -288,7 +400,7 @@ function Scene() {
 
       <React.Suspense fallback={null}>
         {visitors.map(v => (
-          <Visitor key={v.id} id={v.id} imageUrl={v.imageUrl} moveConfig={v.moveConfig} removeVisitor={removeVisitor} spriteConfig={spriteConfig} />
+          <Visitor key={v.id} id={v.id} imageUrl={v.imageUrl} moveConfig={v.moveConfig} removeVisitor={removeVisitor} spriteConfigRef={cfgRef} />
         ))}
       </React.Suspense>
 
@@ -303,12 +415,36 @@ function Scene() {
         </Html>
       )}
 
-      <OrbitControls
-        ref={orbitRef}
-        enablePan={viewMode === 'Free'}
-        enableRotate={viewMode === 'Free'}
-        enableZoom={viewMode === 'Free'}
-      />
+      <EffectComposer disableNormalPass>
+        <BrightnessContrast
+          brightness={cfg.enableColors ? cfg.brightness : 0}
+          contrast={cfg.enableColors ? cfg.contrast : 0}
+        />
+        <HueSaturation
+          hue={cfg.enableColors ? cfg.hue : 0}
+          saturation={cfg.enableColors ? cfg.saturation : 0}
+        />
+        <Bloom
+          intensity={cfg.enableBloom ? cfg.bloomIntensity : 0}
+          luminanceThreshold={cfg.bloomLuminanceThreshold}
+          luminanceSmoothing={0.025}
+        />
+        <Vignette
+          eskil={false}
+          offset={cfg.vignetteOffset}
+          darkness={cfg.enableVignette ? cfg.vignetteDarkness : 0}
+        />
+        <Noise
+          opacity={cfg.enableNoise ? cfg.noiseOpacity : 0}
+          premultiply
+        />
+        <DepthOfField
+          target={dofTargetVector}
+          focalLength={cfg.dofFocalLength}
+          bokehScale={cfg.enableDof ? cfg.dofBokehScale : 0}
+          height={480}
+        />
+      </EffectComposer>
 
       <Billboard position={[0, 2.5, -15]}>
         <Text fontSize={0.5} color="white" outlineWidth={0.05} outlineColor="black">GIGANTES DE PORTO ALEGRE</Text>

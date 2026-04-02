@@ -43,7 +43,7 @@
     <UnityVersion>6000.3.6f1</UnityVersion>
   </PropertyGroup>
   <ItemGroup>
-    <Analyzer Include="/Users/brito/.vscode/extensions/visualstudiotoolsforunity.vstuc-1.1.3/Analyzers/Microsoft.Unity.Analyzers.dll" />
+    <Analyzer Include="/Users/brito/.vscode/extensions/visualstudiotoolsforunity.vstuc-1.2.1/Analyzers/Microsoft.Unity.Analyzers.dll" />
     <Analyzer Include="/Applications/Unity/Hub/Editor/6000.3.6f1/Unity.app/Contents/Resources/BuildPipeline/Unity.SourceGenerators/Unity.SourceGenerators.dll" />
     <Analyzer Include="/Applications/Unity/Hub/Editor/6000.3.6f1/Unity.app/Contents/Resources/BuildPipeline/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
     <Analyzer Include="/Applications/Unity/Hub/Editor/6000.3.6f1/Unity.app/Contents/Resources/BuildPipeline/Unity.SourceGenerators/Unity.UIToolkit.SourceGenerator.dll" />
@@ -54,6 +54,7 @@
     <Compile Include="Assets/CharacterCreator2D/Data/Scripts/Editor/Custom Inspector/InspectorCharacterViewer.cs" />
     <Compile Include="Assets/CharacterCreator2D/Data/Scripts/Editor/CustomMenu.cs" />
     <Compile Include="Assets/CharacterCreator2D/Data/Scripts/Editor/PartRefCustomMenu.cs" />
+    <Compile Include="Assets/Editor/SpriteSheetExporter.cs" />
     <Compile Include="Assets/CharacterCreator2D/Data/Scripts/Editor/Property Drawer/ColorCodeDrawer.cs" />
     <Compile Include="Assets/CharacterCreator2D/Data/Scripts/Editor/Custom Inspector/InspectorSetupData.cs" />
     <Compile Include="Assets/CharacterCreator2D/Data/Scripts/Editor/Custom Inspector/InspectorPartList.cs" />

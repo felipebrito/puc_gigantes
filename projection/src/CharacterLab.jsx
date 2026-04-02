@@ -1,23 +1,35 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid, Environment } from '@react-three/drei';
-import { useControls } from 'leva';
+import { GUI } from 'lil-gui';
 import { SkeletonCharacter } from './components/SkeletonCharacter';
 
 export default function CharacterLab() {
-    const { clothing, walkStyle, walk, speed, scale } = useControls('Character Lab', {
-        clothing: {
-            options: {
-                'Suit (Grey)': '/textures/suit.png',
-                'Dress (Beige)': '/textures/dress.png',
-                'Casual (Denim)': '/textures/casual.png'
-            }
-        },
-        walkStyle: { options: ['normal', 'long', 'fast'] },
+    const [params, setParams] = useState({
+        clothing: '/textures/suit.png',
+        walkStyle: 'normal',
         walk: true,
-        speed: { value: 3, min: 0, max: 10 },
-        scale: { value: 1, min: 0.5, max: 2 }
+        speed: 3,
+        scale: 1,
     });
+
+    useEffect(() => {
+        const gui = new GUI({ title: 'Character Lab' });
+        const proxy = { ...params };
+        const sync = (key) => (v) => setParams(prev => ({ ...prev, [key]: v }));
+        gui.add(proxy, 'clothing', {
+            'Suit (Grey)': '/textures/suit.png',
+            'Dress (Beige)': '/textures/dress.png',
+            'Casual (Denim)': '/textures/casual.png',
+        }).name('Roupa').onChange(sync('clothing'));
+        gui.add(proxy, 'walkStyle', ['normal', 'long', 'fast']).name('Estilo').onChange(sync('walkStyle'));
+        gui.add(proxy, 'walk').name('Andar').onChange(sync('walk'));
+        gui.add(proxy, 'speed', 0, 10, 0.1).name('Velocidade').onChange(sync('speed'));
+        gui.add(proxy, 'scale', 0.5, 2, 0.01).name('Escala').onChange(sync('scale'));
+        return () => gui.destroy();
+    }, []);
+
+    const { clothing, walkStyle, walk, speed, scale } = params;
 
     return (
         <div style={{ width: '100vw', height: '100vh', background: '#111' }}>

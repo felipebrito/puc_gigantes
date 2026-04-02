@@ -8,8 +8,9 @@ App React/Vite que renderiza a cena de projeção do **Gigantes de Porto Alegre*
 |---|---|---|
 | react-three-fiber | ^9 | Bridge React ↔ Three.js |
 | @react-three/drei | ^10 | Helpers (Billboard, Text, useTexture…) |
+| @react-three/postprocessing | ^3 | Pipeline de pós-processamento |
 | three | ^0.182 | Renderer 3D |
-| leva | ^0.10 | Painel de configuração em tempo real |
+| lil-gui | ^0.20 | Painel de configuração em tempo real |
 | socket.io-client | ^4 | Eventos do servidor (nova foto) |
 
 ## Rodar localmente
@@ -32,6 +33,7 @@ App.jsx
       ├── Dinosaur          (GLB, posição fixa)
       ├── Visitor × N       (personagens caminhando)
       │    └── SpriteCharacter  (sprite sheet animado + overlay de foto)
+      ├── EffectComposer    (pós-processamento)
       └── Billboard (texto GIGANTES DE PORTO ALEGRE + contador)
 ```
 
@@ -43,12 +45,14 @@ App.jsx
 
 Ponto de entrada. Gerencia:
 
-- **Pool de fotos** — poll a cada 10s em `GET /visitors`; atualizado imediatamente na chegada
-- **Spawn de visitantes** — timer configurável (padrão 0.1s); um personagem por intervalo
+- **Pool de fotos** — poll a cada 10s em `GET /visitors`; preload de texturas antes do spawn
+- **Spawn de visitantes** — timer configurável (padrão 2.5s); um personagem por intervalo
 - **Socket** — evento `new_visitor` spawna personagem imediatamente com a foto recebida
-- **Configurador Leva** — painel em tempo real com todos os parâmetros (ver tabela abaixo)
+- **Configurador lil-gui** — painel em tempo real com todos os parâmetros (ver tabela abaixo)
+- **Sistema de Presets** — salvar/carregar configurações por nome via `localStorage`;
+  exportar como JSON; auto-save a cada mudança; versionamento de compatibilidade
 
-#### Parâmetros Leva — "Personagem Sprite"
+#### Parâmetros — "Personagem Sprite"
 
 | Parâmetro | Padrão | Descrição |
 |---|---|---|
@@ -58,15 +62,33 @@ Ponto de entrada. Gerencia:
 | Tamanho foto | 0.54 | Largura da foto como fração da largura do corpo |
 | Offset X cabeça | 0.0 | Deslocamento horizontal da foto |
 | Movimento cabeça | true | Ativa head bob |
-| Amplitude bob | 0.0 | Amplitude vertical do head bob (unidades) |
+| Amplitude bob | 0.005 | Amplitude vertical do head bob (unidades 3D) |
 | Escala mín/máx | 1.2 / 1.4 | Range de escala aleatória por personagem |
 | Vel. mín/máx | 0.8 / 1.2 | Range de velocidade de travessia (unidades/s) |
-| Intervalo spawn | 0.1 s | Segundos entre spawns automáticos |
+| Intervalo spawn | 2.5 s | Segundos entre spawns automáticos |
 | Labels debug | false | Exibe `v:` e `s:` ao lado de cada personagem |
 
-#### Botões Leva
-- **Adicionar visitante** — spawna um personagem com foto aleatória do pool
-- **Remover todos** — limpa todos os personagens da cena
+#### Parâmetros — "Pós-Processamento"
+
+| Pasta | Parâmetros | |
+|---|---|---|
+| Cores | Ativar, Brilho, Contraste, Matiz, Saturação | desativado por padrão |
+| Bloom | Ativar, Intensidade (0–5), Threshold (0–1) | desativado por padrão |
+| Vignette | Ativar, Escurecimento (0–1), Offset (0–1) | desativado por padrão |
+| Noise (Film Grain) | Ativar, Opacidade (0–1) | desativado por padrão |
+| Profundidade (DoF) | Ativar, Z Target (-20–15), Focal Length (0–0.1), Bokeh Scale (0–30) | desativado por padrão |
+
+> **DoF — foco na cena:**
+> Câmera em Z=45. Personagens nascem entre Z=2 e Z=8. Dinossauro em Z=-15.
+> Para focar personagens e borrar o fundo, use **Z Target entre 2 e 8**.
+
+#### Botões
+- **▶ Adicionar visitante** — spawna um personagem com foto aleatória do pool
+- **✕ Remover todos** — limpa todos os personagens da cena
+- **💾 Salvar preset** — salva estado atual com nome customizável
+- **📂 Carregar preset** — restaura estado salvo pelo nome
+- **⬇️ Exportar JSON** — download do preset atual
+- **↩️ Resetar padrão** — restaura todos os valores de fábrica
 
 ---
 
@@ -75,7 +97,9 @@ Ponto de entrada. Gerencia:
 Renderiza um personagem com:
 - **Corpo** — plane com UV offset animado sobre o sprite sheet
 - **Face** — plane transparente sobreposto na posição da cabeça
-- **Head bob** — `sin` sincronizado com o fps do walk cycle (2 bobs/ciclo)
+- **Head bob** — `sin` com fase aleatória por personagem (evita sincronismo visual)
+- **Geometria dinâmica** — recalculada via `useFrame` quando parâmetros mudam;
+  zero re-renders React ao ajustar sliders
 
 #### Props
 
@@ -86,7 +110,8 @@ Renderiza um personagem com:
 | `meta` | `{cols:4, rows:3, frameCount:12, frameWidth:256, frameHeight:512}` | Layout do sheet |
 | `scale` | 1 | Escala global |
 | `direction` | 1 | 1 = direita, -1 = esquerda (espelha sprite) |
-| `spriteConfig` | DEFAULTS | Objeto com todos os parâmetros do Leva |
+| `phaseOffset` | 0 | Fase inicial do head bob (0–2π) |
+| `spriteConfigRef` | — | Ref para o objeto de configuração (zero re-renders) |
 
 ---
 
@@ -99,6 +124,13 @@ Gerado pelo Unity Editor via **Tools → Sprite Sheet Exporter**.
 - Layout padrão: 4 colunas × 3 linhas = 12 frames, 256×512px por frame
 
 Para regenerar: abra o Unity, selecione o prefab CC2D e clique em **Auto-fit + Exportar**.
+
+---
+
+## Câmera
+
+Posição fxa cinematográfica: `position=[0, 0, 45]`, `fov=10`.
+Não possui OrbitControls — câmera travada para estabilidade de projeção.
 
 ---
 

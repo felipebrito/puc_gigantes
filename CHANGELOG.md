@@ -9,6 +9,57 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [0.5.0] — 2026-04-02
+
+### Adicionado
+- **Pipeline de pós-processamento** (`EffectComposer`) com ativação individual por efeito:
+  - **Cores** — Brilho, Contraste, Matiz, Saturação (`BrightnessContrast` + `HueSaturation`)
+  - **Bloom** — Intensidade e Threshold luminância
+  - **Vignette** — Escurecimento e Offset da borda
+  - **Noise (Film Grain)** — Opacidade ajustável
+  - **Depth of Field** — Z Target (foco real), Focal Length, Bokeh Scale
+- **Sistema de Presets** — salvar/carregar configurações nomeadas via `localStorage`;
+  exportar preset como arquivo `.json`; resetar para padrão; auto-save a cada mudança
+- **`phaseOffset` por personagem** — cada visitante recebe uma fase aleatória (0–2π)
+  no head bob, eliminando o sincronismo visual entre personagens
+- **Preload de texturas** — `useTexture.preload()` chamado ao receber fotos do servidor
+  e via socket, eliminando flicker na primeira aparição do personagem
+- **Versionamento de preset** (`_v: CONFIG_VERSION`) — presets incompatíveis são
+  descartados automaticamente; padrões corretos são restaurados sem intervenção manual
+
+### Alterado
+- **Migração de `leva` para `lil-gui`** — painel de configuração mais robusto e com
+  precisão numérica real (sem saltos em valores pequenos como `0.001`)
+  - `App.jsx`: `useControls` / `folder` / `button` substituídos por `useEffect` + `GUI`
+  - `CharacterLab.jsx`: mesma migração
+- **`sync()` síncrono** — `cfgRef.current` atualizado imediatamente no `onChange` do
+  lil-gui (sem aguardar ciclo React); personagens reagem em tempo real
+- **`SpriteCharacter.jsx` v4** — configuração lida via `spriteConfigRef` (ref) dentro
+  do `useFrame`; elimina re-renders e flickering ao ajustar parâmetros
+- **Geometria dinâmica no `useFrame`** — `bodyH`, `headSize`, `headYRatio`, `headXOffset`
+  recalculados e aplicados ao mesh em tempo real sem re-render React
+- **`prevCfgRef` pré-inicializado** — evita rebuild de geometria no primeiro frame,
+  eliminando flash inicial
+- **Câmera fixada** em posição cinematográfica `[0, 0, 45]`, `fov: 10`
+- **`proxy` do lil-gui inicializado com `cfgRef.current`** — painel sempre exibe
+  os valores realmente usados (incluindo preset carregado do localStorage)
+- **Limites de destruição dos visitantes** restaurados para `±22` (fora do frustum)
+- **`spawnInterval` padrão** ajustado para `2.5s`
+- **`Vel. mín/máx`** padrão restaurado para `0.8 / 1.2 u/s`
+
+### Removido
+- Dependência `leva` — desinstalada completamente (`npm uninstall leva`)
+- `OrbitControls` — removido da cena de projeção; câmera travada
+
+### Corrigido
+- Flicker de personagens causado por rebuild de geometria no frame 1
+- Valores de velocidade corrompidos via localStorage (resolvido com versionamento)
+- Crash do `EffectComposer` ao ativar/desativar Depth of Field (hook `useMemo`
+  movido para fora de condicional; efeitos nunca desmontados, apenas zerados)
+- `CharacterLab.jsx` quebrando o build por importar `leva` (removido)
+
+---
+
 ## [0.4.0] — 2026-04-02
 
 ### Adicionado
