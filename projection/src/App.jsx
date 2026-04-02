@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Text, Billboard, Image, useGLTF, Environment, Sky, Cloud, Html, Grid } from '@react-three/drei';
-import { useControls } from 'leva';
+import { OrbitControls, Text, Billboard, useGLTF, Environment, Sky, Html, Grid } from '@react-three/drei';
+import { useControls, button } from 'leva';
 import * as THREE from 'three';
 import io from 'socket.io-client';
 import './App.css';
@@ -36,52 +36,41 @@ function Dinosaur() {
   );
 }
 
-import { SkeletonCharacter } from './components/SkeletonCharacter';
+import { SpriteCharacter } from './components/SpriteCharacter';
 
-const CLOTHING_TEXTURES = [
-  '/textures/suit.png',
-  '/textures/dress.png',
-  '/textures/casual.png'
-];
-
-const WALK_STYLES = ['normal', 'long', 'fast'];
-
-function Visitor({ id, imageUrl, removeVisitor, customZ = 0 }) {
+function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfig }) {
   const ref = useRef();
-
-  const config = useMemo(() => {
-    const direction = Math.random() > 0.5 ? 1 : -1;
-    return {
-      direction,
-      speed: (1.0 + Math.random() * 1.5) * direction,
-      startX: -25 * direction,
-      z: 2 + (Math.random() * 6) + customZ,
-      scale: 1.05 + Math.random() * 0.15,
-      walkStyle: WALK_STYLES[Math.floor(Math.random() * WALK_STYLES.length)],
-      clothingUrl: CLOTHING_TEXTURES[Math.floor(Math.random() * CLOTHING_TEXTURES.length)]
-    };
-  }, [customZ]);
-
-  useFrame((state, delta) => {
+  // Velocidade de animação proporcional à velocidade de caminhada
+  useFrame((_, delta) => {
     if (!ref.current) return;
-    ref.current.position.x += config.speed * delta;
-    if ((config.direction === 1 && ref.current.position.x > 20) ||
-      (config.direction === -1 && ref.current.position.x < -20)) {
+    ref.current.position.x += moveConfig.speed * delta;
+    if ((moveConfig.direction === 1  && ref.current.position.x >  22) ||
+        (moveConfig.direction === -1 && ref.current.position.x < -22)) {
       removeVisitor(id);
     }
   });
 
   return (
-    <group position={[config.startX, -3, config.z]} ref={ref}>
+    <group position={[moveConfig.startX, -3, moveConfig.z]} ref={ref}>
       <Billboard>
-        <SkeletonCharacter
+        <SpriteCharacter
           faceUrl={imageUrl}
-          clothingUrl={config.clothingUrl}
-          walkStyle={config.walkStyle}
-          scale={config.scale}
-          speed={Math.abs(config.speed) * 2.5}
-          direction={config.direction}
+          scale={moveConfig.scale}
+          direction={-moveConfig.direction}
+          spriteConfig={spriteConfig}
         />
+        {spriteConfig?.showDebug && (
+          <Text
+            position={[0, (spriteConfig.bodyH ?? 2.2) * moveConfig.scale + 0.2, 0]}
+            fontSize={0.13}
+            color="yellow"
+            outlineWidth={0.015}
+            outlineColor="black"
+            anchorX="center"
+          >
+            {`v:${Math.abs(moveConfig.speed).toFixed(1)} s:${moveConfig.scale.toFixed(2)}`}
+          </Text>
+        )}
       </Billboard>
     </group>
   );
@@ -91,6 +80,26 @@ function Scene() {
   const [visitors, setVisitors] = useState([]);
   const [connected, setConnected] = useState(false);
   const { camera } = useThree();
+  const activePoolRef = useRef([]);
+  const spawnRef = useRef(null);
+
+  const spriteConfig = useControls('Personagem Sprite', {
+    fps:           { value: 14,   min: 1,    max: 24,  step: 1,    label: 'FPS animação' },
+    bodyH:         { value: 2.0,  min: 0.5,  max: 6.0, step: 0.1,  label: 'Altura corpo' },
+    headYRatio:    { value: 0.82, min: 0.5,  max: 1.0, step: 0.01, label: 'Posição Y cabeça' },
+    headSize:      { value: 0.54, min: 0.1,  max: 1.5, step: 0.02, label: 'Tamanho foto' },
+    headXOffset:   { value: 0.0,  min: -0.5, max: 0.5, step: 0.01, label: 'Offset X cabeça' },
+    headBob:       { value: true,                                    label: 'Movimento cabeça' },
+    headBobAmp:    { value: 0.0,  min: 0.0,  max: 0.2, step: 0.005,label: 'Amplitude bob' },
+    scaleMin:      { value: 1.2,  min: 0.3,  max: 3.0, step: 0.1,  label: 'Escala mín' },
+    scaleMax:      { value: 1.4,  min: 0.3,  max: 3.0, step: 0.1,  label: 'Escala máx' },
+    speedMin:      { value: 0.8,  min: 0.1,  max: 8.0, step: 0.1,  label: 'Vel. mín (u/s)' },
+    speedMax:      { value: 1.2,  min: 0.1,  max: 8.0, step: 0.1,  label: 'Vel. máx (u/s)' },
+    spawnInterval: { value: 0.1,  min: 0.1,  max: 10,  step: 0.1,  label: 'Intervalo spawn (s)' },
+    showDebug:     { value: false,                                   label: 'Labels debug' },
+    'Adicionar visitante': button(() => spawnRef.current?.()),
+    'Remover todos':       button(() => setVisitors([])),
+  });
 
   const { viewMode } = useControls('Câmera Presets', {
     viewMode: {
@@ -136,10 +145,9 @@ function Scene() {
         .then(res => res.json())
         .then(files => {
           if (files && files.length > 0) {
-            setHistory(prev => {
-              const merged = Array.from(new Set([...prev, ...files]));
-              return merged;
-            });
+            setHistory(prev => Array.from(new Set([...prev, ...files])));
+            // Atualiza o pool imediatamente com as fotos reais do servidor
+            setActivePool(files.slice(0, 8));
             setApiError(false);
           }
         })
@@ -156,7 +164,10 @@ function Scene() {
     };
   }, []);
 
-  const [activePool, setActivePool] = useState(["/models/face_test.png"]);
+  const [activePool, setActivePool] = useState([]);
+
+  // Sync pool para ref (acessível em callbacks sem re-render)
+  useEffect(() => { activePoolRef.current = activePool; }, [activePool]);
 
   useEffect(() => {
     const rotatePool = () => {
@@ -168,19 +179,46 @@ function Scene() {
     return () => clearInterval(interval);
   }, [history]);
 
+  const spriteConfigRef = useRef(spriteConfig);
+  useEffect(() => { spriteConfigRef.current = spriteConfig; }, [spriteConfig]);
+  const lastSpawnRef = useRef(0);
+
+  const makeMoveConfig = useCallback(() => {
+    const cfg       = spriteConfigRef.current;
+    const direction = Math.random() > 0.5 ? 1 : -1;
+    const speed     = (cfg.speedMin + Math.random() * (cfg.speedMax - cfg.speedMin)) * direction;
+    const scale     = cfg.scaleMin  + Math.random() * (cfg.scaleMax  - cfg.scaleMin);
+    return { direction, speed, scale, startX: -25 * direction, z: 2 + Math.random() * 6 };
+  }, []);
+
+  const spawnOne = useCallback((imageUrl) => {
+    const pool = activePoolRef.current;
+    const url  = imageUrl ?? (pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : null);
+    if (!url) { console.warn('[Spawn] Pool vazio — faça uma foto no booth primeiro'); return; }
+    setVisitors(prev => [...prev, {
+      id: Date.now() + Math.random(),
+      imageUrl: url,
+      moveConfig: makeMoveConfig(),
+    }]);
+  }, [makeMoveConfig]);
+
+  // Expõe spawnOne para o botão Leva via ref estável
+  useEffect(() => { spawnRef.current = spawnOne; }, [spawnOne]);
+
   useFrame((state) => {
-    if (visitors.length < MAX_VISITORS && activePool.length > 0) {
-      if (Math.random() < 0.02) {
-        const randomPhoto = activePool[Math.floor(Math.random() * activePool.length)];
-        const isOnScreen = visitors.some(v => v.imageUrl === randomPhoto);
-        if (!isOnScreen || activePool.length < 3) {
-          setVisitors(prev => [...prev, {
-            id: Date.now() + Math.random(),
-            imageUrl: randomPhoto,
-            zOffset: (Math.random() - 0.5) * 0.1
-          }]);
-        }
-      }
+    const now      = state.clock.elapsedTime;
+    const interval = spriteConfigRef.current.spawnInterval ?? 2.0;
+    if (visitors.length < MAX_VISITORS &&
+        activePoolRef.current.length > 0 &&
+        now - lastSpawnRef.current >= interval) {
+      lastSpawnRef.current = now;
+      const pool  = activePoolRef.current;
+      const photo = pool[Math.floor(Math.random() * pool.length)];
+      setVisitors(prev => [...prev, {
+        id: Date.now() + Math.random(),
+        imageUrl: photo,
+        moveConfig: makeMoveConfig(),
+      }]);
     }
 
     if (viewMode !== 'Free' && cameraTargets[viewMode]) {
@@ -197,8 +235,15 @@ function Scene() {
 
   useEffect(() => {
     const handleNewVisitor = (data) => {
-      setVisitors(prev => [...prev, { ...data, zOffset: (Math.random() - 0.5) * 0.1 }]);
-      setHistory(h => [...h, data.imageUrl]);
+      const url = data.imageUrl;
+      setHistory(h => [...h, url]);
+      setActivePool(prev => Array.from(new Set([...prev, url])).slice(0, 8));
+      // Booth → personagem entra imediatamente na cena
+      setVisitors(prev => [...prev, {
+        id: Date.now() + Math.random(),
+        imageUrl: url,
+        moveConfig: makeMoveConfig(),
+      }]);
     };
     socket.on('new_visitor', handleNewVisitor);
     return () => socket.off('new_visitor', handleNewVisitor);
@@ -242,9 +287,8 @@ function Scene() {
       </React.Suspense>
 
       <React.Suspense fallback={null}>
-        <Visitor id="test-ref" imageUrl="/models/face_test.png" removeVisitor={() => { }} />
         {visitors.map(v => (
-          <Visitor key={v.id} id={v.id} imageUrl={v.imageUrl} removeVisitor={removeVisitor} customZ={v.zOffset} />
+          <Visitor key={v.id} id={v.id} imageUrl={v.imageUrl} moveConfig={v.moveConfig} removeVisitor={removeVisitor} spriteConfig={spriteConfig} />
         ))}
       </React.Suspense>
 
@@ -269,7 +313,7 @@ function Scene() {
       <Billboard position={[0, 2.5, -15]}>
         <Text fontSize={0.5} color="white" outlineWidth={0.05} outlineColor="black">GIGANTES DE PORTO ALEGRE</Text>
         <Text position={[0, -0.3, 0]} fontSize={0.15} color={connected ? "#4caf50" : "#f44336"}>
-          {connected ? "● LIVE SCAN" : "○ SCANNING..."} | {visitors.length + 1} PERSONS
+          {connected ? "● LIVE SCAN" : "○ SCANNING..."} | {visitors.length} PERSONS
         </Text>
       </Billboard>
     </>
