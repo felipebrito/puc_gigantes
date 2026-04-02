@@ -252,10 +252,10 @@ function App() {
     const vw = video.videoWidth, vh = video.videoHeight;
     // Normaliza para 0-1 relativo ao video
     return {
-      left:   Math.max(0, (x - width  * 0.5) / vw),
-      top:    Math.max(0, (y - height * 0.8) / vh),
-      right:  Math.min(1, (x + width  * 1.5) / vw),
-      bottom: Math.min(1, chinY / vh),
+      left:   Math.max(0, (x - width  * 0.15) / vw),
+      top:    Math.max(0, (y - height * 0.45) / vh),
+      right:  Math.min(1, (x + width  * 1.15) / vw),
+      bottom: Math.min(1, (chinY + height * 0.15) / vh),
       vw, vh
     };
   };

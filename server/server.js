@@ -206,9 +206,9 @@ async function trimTransparentRows(buffer) {
   const faceW = right - left + 1;
   const faceH = bottom - top + 1;
   
-  // Criar um quadrado de 1:1 baseado na maior dimensão + respiro
+  // Criar um quadrado de 1:1 baseado na maior dimensão
   const maxDim = Math.max(faceW, faceH);
-  const squareSize = maxDim * 1.25; // Garante que o rosto ocupe 80% da imagem (min 75% pedido)
+  const squareSize = maxDim; 
   const scale = 400 / squareSize;
 
   const out = createCanvas(400, 400);
@@ -482,40 +482,34 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
     
     let buffer;
     if (detections) {
-      console.log(`[Processing] Rosto detectado. Aplicando estratégia "Shoulder Killer" 2026.`);
+      console.log(`[Processing] Rosto detectado. Aplicando "Shoulder Killer BIOMETRIC".`);
       const jawline = detections.landmarks.getJawOutline();
       const box = detections.detection.box;
 
-      // Parâmetros salvos como padrão Biométrico Pro (Zero Neck/Shoulder)
-      // Parâmetros verificados pelo usuário como ideais
-      const topPad = 0.5, jawPad = 0.0, earPad = 0.15, neckPad = 0.7, blur = 12;
+      const blur = 8;
 
-      // 2. Obter Máscara Facial (Landmarks)
+      // Create Face-Only Mask (High Precision)
       const maskCanvas = createCanvas(rawImg.width, rawImg.height);
       const mctx = maskCanvas.getContext('2d');
-      const getPt = (i) => {
-          const distFromCenter = Math.abs(i - 8) / 8;
-          const oEar = box.width * earPad;
-          const oTaper = neckPad;
-          const currentSidePad = oEar * (1 - (oTaper * 1.5 * (1 - Math.pow(distFromCenter, 0.5))));
-          let hShift = (i < 8) ? -currentSidePad : (i > 8 ? currentSidePad : 0);
-          let sShaveY = 0;
-          if (oTaper > 0.1 && (i < 6 || i > 10)) {
-              sShaveY = -box.height * (oTaper * 0.45 * (1 - distFromCenter));
-          }
-          return { x: jawline[i].x + hShift, y: jawline[i].y + (box.height * jawPad) + sShaveY };
-      };
       mctx.fillStyle = 'white';
+      
       mctx.beginPath();
-      const startPt = getPt(0); mctx.moveTo(startPt.x, startPt.y);
-      for (let i = 0; i < jawline.length - 1; i++) {
-          const pt = getPt(i); const next = getPt(i + 1);
-          mctx.quadraticCurveTo(pt.x, pt.y, (pt.x + next.x)/2, (pt.y + next.y)/2);
+      // Start slightly above left ear
+      mctx.moveTo(jawline[0].x, jawline[0].y - 50);
+      
+      // Follow the jawline tightly
+      for (let i = 0; i < jawline.length; i++) {
+        // Taper effect: shift points 8-16 slightly inward if they are low
+        const pt = jawline[i];
+        mctx.lineTo(pt.x, pt.y);
       }
-      const endPt = getPt(16);
-      mctx.lineTo(endPt.x, endPt.y); mctx.lineTo(rawImg.width, endPt.y);
-      mctx.lineTo(rawImg.width, 0); mctx.lineTo(0, 0); mctx.lineTo(0, startPt.y);
+      
+      // Complete the path above the head (Keep only face content)
+      mctx.lineTo(jawline[16].x, jawline[16].y - 50);
+      mctx.lineTo(jawline[16].x, 0);
+      mctx.lineTo(jawline[0].x, 0);
       mctx.closePath();
+      
       mctx.filter = `blur(${blur}px)`;
       mctx.fill();
 
