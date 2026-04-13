@@ -12,7 +12,7 @@ import { useWarpState } from './hooks/useWarpState';
 import { WarpCanvas } from './components/WarpCanvas';
 import { WarpOverlay } from './components/WarpOverlay';
 import { WarpShortcuts } from './components/WarpShortcuts';
-import { BackgroundVideo } from './components/BackgroundVideo';
+import { VideoLayers } from './components/VideoLayers';
 
 // Socket connection — porta 3001 (HTTP, sem certificado)
 const socket = io(window.location.hostname === 'localhost'
@@ -47,18 +47,23 @@ function Dinosaur() {
 import { SpriteCharacter } from './components/SpriteCharacter';
 
 function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfigRef }) {
-  const ref = useRef();
+  const outerRef = useRef();
+  const innerRef = useRef();
   useFrame((_, delta) => {
-    if (!ref.current) return;
-    ref.current.position.x += moveConfig.speed * delta;
-    if ((moveConfig.direction === 1 && ref.current.position.x > 22) ||
-      (moveConfig.direction === -1 && ref.current.position.x < -22)) {
+    if (!innerRef.current) return;
+    innerRef.current.position.x += moveConfig.speed * delta;
+    if ((moveConfig.direction === 1 && innerRef.current.position.x > 22) ||
+      (moveConfig.direction === -1 && innerRef.current.position.x < -22)) {
       removeVisitor(id);
+    }
+    if (outerRef.current) {
+      outerRef.current.position.y = (spriteConfigRef.current.spritesYOffset || 0) + (moveConfig.verticalJitter || 0);
     }
   });
 
   return (
-    <group position={[moveConfig.startX, -3 + (spriteConfigRef.current.spritesYOffset || 0) + (moveConfig.verticalJitter || 0), moveConfig.z]} ref={ref}>
+    <group ref={outerRef} position={[0, 0, moveConfig.z]}>
+    <group position={[moveConfig.startX, 0, 0]} ref={innerRef}>
       <Billboard>
         <SpriteCharacter
           faceUrl={imageUrl}
@@ -81,12 +86,13 @@ function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfigRef }) {
         )}
       </Billboard>
     </group>
+    </group>
   );
 }
 
 const PRESET_KEY = 'gigantes_preset_last';
 
-const CONFIG_VERSION = 4;
+const CONFIG_VERSION = 5;
 
 const DEFAULT_CONFIG = {
   _v: CONFIG_VERSION,
@@ -112,11 +118,11 @@ const DEFAULT_CONFIG = {
   warpCols: 4,
   warpRows: 4,
   warpSubdiv: 12,
-  enableBgVideo: false,
-  bgVideoUrl: 'https://vjs.zencdn.net/v/oceans.mp4',
+  enableBgVideo: true,
+  bgVideoUrl: '/videos/Ambiente 8_v2_opt.mp4',
   bgVideoOpacity: 1.0,
-  showDino: true,
-  showFloor: true,
+  showDino: false,
+  showFloor: false,
   showText: false,
 
   warpOffsets: [],
@@ -128,7 +134,7 @@ function loadSavedConfig() {
     if (raw) {
       const parsed = JSON.parse(raw);
       // Saneamento de URL: Se for a URL antiga que costuma quebrar, reseta para a nova estável
-      if (parsed.bgVideoUrl && parsed.bgVideoUrl.includes('commondatastorage')) {
+      if (parsed.bgVideoUrl && (parsed.bgVideoUrl.includes('commondatastorage') || parsed.bgVideoUrl.includes('vjs.zencdn'))) {
         parsed.bgVideoUrl = DEFAULT_CONFIG.bgVideoUrl;
       }
       // Discard saves from older versions
@@ -181,6 +187,8 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
   // Build lil-gui panel once
   useEffect(() => {
     const gui = new GUI({ title: 'Configurações' });
+    gui.close(); // inicia retraído
+    window.__gui = gui;
     const proxy = { ...cfgRef.current, editingWarp: !!warpRef.current?.state?.editing };
 
     // Atualiza o proxy local quando o cfg externo muda (vindo de presets ou shortcuts)
@@ -620,10 +628,16 @@ export default function App() {
         warp={warp}
         onCommit={() => {
           warp.commitOffsets();
-          // Força o sync com o config para salvar no PRESET_KEY também
           if (window.__warpSync) window.__warpSync();
         }}
         onMoveVertex={warp.moveVertexLive}
+        onYOffset={(delta, save) => {
+          setCfg(prev => {
+            const next = { ...prev, spritesYOffset: parseFloat(((prev.spritesYOffset || 0) + delta).toFixed(3)) };
+            if (save) try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)); } catch {}
+            return next;
+          });
+        }}
       />
       {/* Main R3F Canvas - hidden if warp is active and NOT editing (production) */}
       <div style={{
@@ -641,8 +655,10 @@ export default function App() {
           {/* Vídeo de fundo condicional para evitar overhead e hooks pendentes */}
           {cfg.enableBgVideo && (
             <Suspense fallback={null}>
-              <BackgroundVideo
-                url={cfg.bgVideoUrl}
+              <VideoLayers
+                bgUrl={cfg.bgVideoUrl}
+                fgUrl="/videos/Ambiente 8 FG_opt.mp4"
+                lumaUrl="/videos/Ambiente 8 FG_LUMMA_opt.mp4"
                 opacity={cfg.bgVideoOpacity}
               />
             </Suspense>

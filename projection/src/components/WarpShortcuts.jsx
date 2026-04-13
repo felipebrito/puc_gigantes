@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 
-export function WarpShortcuts({ warp, onCommit, onMoveVertex }) {
-  const callbacksRef = useRef({ warp, onCommit, onMoveVertex })
-  useEffect(() => { callbacksRef.current = { warp, onCommit, onMoveVertex } })
+export function WarpShortcuts({ warp, onCommit, onMoveVertex, onYOffset }) {
+  const callbacksRef = useRef({ warp, onCommit, onMoveVertex, onYOffset })
+  useEffect(() => { callbacksRef.current = { warp, onCommit, onMoveVertex, onYOffset } })
 
   useEffect(() => {
     const getCornerIdx = (n, cols, rows) => {
@@ -14,17 +14,38 @@ export function WarpShortcuts({ warp, onCommit, onMoveVertex }) {
     };
 
     const onKeyDown = (e) => {
-      const { warp, onMoveVertex, onCommit } = callbacksRef.current;
+      const { warp, onMoveVertex, onCommit, onYOffset } = callbacksRef.current;
       if (!warp) return;
       const { state, setSelectedIdx, setEditing, setEnabled } = warp;
-      
+
       const key = e.key.toLowerCase();
 
-      // C - Toggle Calibragem
+      // C - Toggle Calibragem: entra em (enabled+editing), sai em (disabled+not-editing)
       if (key === 'c') {
-        const target = !state.editing;
-        setEnabled(true);
-        setEditing(target);
+        if (!state.editing) {
+          setEnabled(true);
+          setEditing(true);
+        } else {
+          setEditing(false);
+          setEnabled(false);
+        }
+        return;
+      }
+
+      // M - Toggle GUI
+      if (key === 'm') {
+        const gui = window.__gui;
+        if (gui) {
+          gui._closed ? gui.open() : gui.close();
+        }
+        return;
+      }
+
+      // A / S — ajusta Y dos visitantes
+      if (key === 'a' || key === 's') {
+        const step = e.shiftKey ? 0.2 : 0.05;
+        const delta = key === 'a' ? step : -step;
+        onYOffset?.(delta);
         return;
       }
 
@@ -44,7 +65,7 @@ export function WarpShortcuts({ warp, onCommit, onMoveVertex }) {
         return;
       }
 
-      // Arrows
+      // Arrows — mover vértice warp
       if (state.selectedIdx !== null) {
         let dx = 0, dy = 0;
         const step = e.shiftKey ? 10 : 1;
@@ -56,19 +77,25 @@ export function WarpShortcuts({ warp, onCommit, onMoveVertex }) {
         if (dx !== 0 || dy !== 0) {
           e.preventDefault();
           onMoveVertex(state.selectedIdx, dx, dy);
-          // Note: App will re-render via state updates if needed, 
-          // but moveVertexLive only updates the ref.
-          // We need a way to trigger a re-render for the overlay lines.
-          // Since this is in Shortcuts, we'll need to pass setTick or similar 
-          // if we want immediate visual feedback on the SVG lines.
-          // Or just use setSelectedIdx(state.selectedIdx) to force a component update.
-          setSelectedIdx(state.selectedIdx); 
+          setSelectedIdx(state.selectedIdx);
         }
       }
     };
 
+    const onKeyUp = (e) => {
+      const { onYOffset } = callbacksRef.current;
+      // Ao soltar ↑ ou ↓ fora do warp editing, salva
+      if (e.key === 'a' || e.key === 's') {
+        onYOffset?.(0, true);
+      }
+    };
+
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, []);
 
   return null;
