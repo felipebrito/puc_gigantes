@@ -10,82 +10,79 @@ const LUMA_VERT = `
   }
 `;
 
+// mode 0 — luminância padrão (Rec.601)
+// mode 1 — canal R apenas
+// mode 2 — canal G apenas
+// mode 3 — média RGB simples
+// mode 4 — luminância invertida (matte negativo)
 const LUMA_FRAG = `
   uniform sampler2D fgMap;
   uniform sampler2D lumaMap;
   uniform float opacity;
+  uniform int lumaMode;
   varying vec2 vUv;
   void main() {
     vec4 fg = texture2D(fgMap, vUv);
     vec4 luma = texture2D(lumaMap, vUv);
-    float alpha = dot(luma.rgb, vec3(0.299, 0.587, 0.114));
+    float alpha;
+    if (lumaMode == 1)      alpha = luma.r;
+    else if (lumaMode == 2) alpha = luma.g;
+    else if (lumaMode == 3) alpha = (luma.r + luma.g + luma.b) / 3.0;
+    else if (lumaMode == 4) alpha = 1.0 - dot(luma.rgb, vec3(0.299, 0.587, 0.114));
+    else                    alpha = dot(luma.rgb, vec3(0.299, 0.587, 0.114));
     gl_FragColor = vec4(fg.rgb, alpha * opacity);
   }
 `;
 
-// Sincroniza video B com video A (referência)
-function useSyncedVideo(refVideo, targetTexture) {
-  useFrame(() => {
-    if (!refVideo || !targetTexture?.image) return;
-    const ref = refVideo;
-    const target = targetTexture.image;
-    if (!ref.duration || !target.duration) return;
-    const diff = Math.abs(ref.currentTime - target.currentTime);
-    if (diff > 0.1) target.currentTime = ref.currentTime;
-  });
-}
-
-export function VideoLayers({ bgUrl, fgUrl, lumaUrl, opacity = 1.0 }) {
+export function VideoLayers({ bgUrl, fgUrl, lumaUrl, opacity = 1.0, lumaMode = 0 }) {
   const { viewport, camera } = useThree();
 
-  const bgTexture  = useVideoTexture(bgUrl,   { unsuspend: 'canplay', muted: true, loop: true, start: true });
-  const fgTexture  = useVideoTexture(fgUrl,   { unsuspend: 'canplay', muted: true, loop: true, start: false });
+  const bgTexture   = useVideoTexture(bgUrl,  { unsuspend: 'canplay', muted: true, loop: true, start: true });
+  // FG e LUMA iniciam manualmente juntos
+  const fgTexture   = useVideoTexture(fgUrl,  { unsuspend: 'canplay', muted: true, loop: true, start: false });
   const lumaTexture = useVideoTexture(lumaUrl, { unsuspend: 'canplay', muted: true, loop: true, start: false });
 
   const fgMatRef = useRef();
+  const syncedRef = useRef(false);
 
-  // Inicia FG e LUMA em sincronia com BG assim que BG estiver pronto
+  // Inicia FG e LUMA no mesmo tick — sem seek contínuo
   useEffect(() => {
-    const bgVideo = bgTexture?.image;
-    const fgVideo = fgTexture?.image;
-    const lumaVideo = lumaTexture?.image;
-    if (!bgVideo || !fgVideo || !lumaVideo) return;
+    const fg   = fgTexture?.image;
+    const luma = lumaTexture?.image;
+    if (!fg || !luma || syncedRef.current) return;
 
-    const startSync = () => {
-      fgVideo.currentTime = bgVideo.currentTime;
-      lumaVideo.currentTime = bgVideo.currentTime;
-      fgVideo.play().catch(() => {});
-      lumaVideo.play().catch(() => {});
+    const tryStart = () => {
+      if (fg.readyState < 3 || luma.readyState < 3) return; // aguarda ambos
+      syncedRef.current = true;
+      fg.currentTime   = 0;
+      luma.currentTime = 0;
+      // Play no mesmo microtask
+      Promise.all([fg.play(), luma.play()]).catch(() => {});
     };
 
-    if (!bgVideo.paused) {
-      startSync();
-    } else {
-      bgVideo.addEventListener('play', startSync, { once: true });
-      return () => bgVideo.removeEventListener('play', startSync);
-    }
-  }, [bgTexture, fgTexture, lumaTexture]);
+    // Ressincroniza no loop: quando FG reinicia, LUMA volta ao zero também
+    const onFgLoop = () => { luma.currentTime = 0; };
+    fg.addEventListener('loop', onFgLoop);
 
-  // Re-sincroniza a cada loop do BG
-  useEffect(() => {
-    const bgVideo = bgTexture?.image;
-    const fgVideo = fgTexture?.image;
-    const lumaVideo = lumaTexture?.image;
-    if (!bgVideo || !fgVideo || !lumaVideo) return;
-    const onLoop = () => {
-      fgVideo.currentTime = 0;
-      lumaVideo.currentTime = 0;
+    // Tenta iniciar agora ou quando ambos estiverem prontos
+    tryStart();
+    fg.addEventListener('canplaythrough', tryStart);
+    luma.addEventListener('canplaythrough', tryStart);
+
+    return () => {
+      fg.removeEventListener('canplaythrough', tryStart);
+      luma.removeEventListener('canplaythrough', tryStart);
+      fg.removeEventListener('loop', onFgLoop);
     };
-    bgVideo.addEventListener('seeked', onLoop);
-    return () => bgVideo.removeEventListener('seeked', onLoop);
-  }, [bgTexture, fgTexture, lumaTexture]);
+  }, [fgTexture?.image, lumaTexture?.image]);
 
-  // Atualiza uniforms do shader a cada frame
+  // Atualiza uniforms — sem seek aqui
   useFrame(() => {
     if (fgMatRef.current) {
-      fgMatRef.current.uniforms.fgMap.value = fgTexture;
-      fgMatRef.current.uniforms.lumaMap.value = lumaTexture;
-      fgMatRef.current.uniforms.opacity.value = opacity;
+      fgMatRef.current.uniforms.fgMap.value    = fgTexture;
+      fgMatRef.current.uniforms.lumaMap.value  = lumaTexture;
+      fgMatRef.current.uniforms.opacity.value  = opacity;
+      fgMatRef.current.uniforms.lumaMode.value = lumaMode;
     }
   });
 
@@ -94,7 +91,7 @@ export function VideoLayers({ bgUrl, fgUrl, lumaUrl, opacity = 1.0 }) {
 
   return (
     <>
-      {/* BG layer */}
+      {/* BG — independente */}
       <mesh
         position={[0, 0, targetZ]}
         scale={[vp.width, vp.height, 1]}
@@ -111,7 +108,7 @@ export function VideoLayers({ bgUrl, fgUrl, lumaUrl, opacity = 1.0 }) {
         />
       </mesh>
 
-      {/* FG layer com luma matte */}
+      {/* FG + luma matte */}
       <mesh
         position={[0, 0, targetZ + 0.2]}
         scale={[vp.width, vp.height, 1]}
@@ -125,9 +122,10 @@ export function VideoLayers({ bgUrl, fgUrl, lumaUrl, opacity = 1.0 }) {
           depthWrite={false}
           depthTest={false}
           uniforms={{
-            fgMap:   { value: fgTexture },
-            lumaMap: { value: lumaTexture },
-            opacity: { value: opacity },
+            fgMap:    { value: fgTexture },
+            lumaMap:  { value: lumaTexture },
+            opacity:  { value: opacity },
+            lumaMode: { value: lumaMode },
           }}
           vertexShader={LUMA_VERT}
           fragmentShader={LUMA_FRAG}

@@ -121,6 +121,7 @@ const DEFAULT_CONFIG = {
   enableBgVideo: true,
   bgVideoUrl: '/videos/Ambiente 8_v2_opt.mp4',
   bgVideoOpacity: 1.0,
+  lumaMode: 0,
   showDino: false,
   showFloor: false,
   showText: false,
@@ -253,6 +254,7 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
     const bg = gui.addFolder('🏞️ Cenas / Ambiente');
     bg.add(proxy, 'enableBgVideo').name('Vídeo de Fundo').onChange(sync('enableBgVideo'));
     bg.add(proxy, 'bgVideoUrl').name('URL do Vídeo').onFinishChange(sync('bgVideoUrl'));
+    bg.add(proxy, 'lumaMode', { 'Luminância (Rec.601)': 0, 'Canal R': 1, 'Canal G': 2, 'Média RGB': 3, 'Invertido': 4 }).name('Modo Luma').onChange(sync('lumaMode'));
     bg.add(proxy, 'bgVideoOpacity', 0, 1, 0.01).name('Opacidade').onChange(sync('bgVideoOpacity'));
     bg.add(proxy, 'showDino').name('Mostrar Dinossauro').onChange(sync('showDino'));
     bg.add(proxy, 'showFloor').name('Mostrar Chão/Grid').onChange(sync('showFloor'));
@@ -660,6 +662,7 @@ export default function App() {
                 fgUrl="/videos/Ambiente 8 FG_opt.mp4"
                 lumaUrl="/videos/Ambiente 8 FG_LUMMA_opt.mp4"
                 opacity={cfg.bgVideoOpacity}
+                lumaMode={cfg.lumaMode ?? 0}
               />
             </Suspense>
           )}
