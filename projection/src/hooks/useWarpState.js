@@ -68,15 +68,22 @@ export function useWarpState() {
   const update = useCallback((fn) => {
     setState(prev => {
       const next = fn(prev)
-      offsetsRef.current = [...next.offsets]
+      if (next.offsets !== prev.offsets) {
+        offsetsRef.current = [...next.offsets]
+      }
       saveState(next)
       return next
     })
   }, [])
 
   const setEnabled = useCallback((enabled) => {
-    update(s => ({ ...s, enabled }))
-  }, [update])
+    // Usa setState direto para NÃO resetar offsetsRef com os edits não commitados
+    setState(prev => {
+      const next = { ...prev, enabled }
+      saveState(next)
+      return next
+    })
+  }, [])
 
   const setGrid = useCallback((cols, rows) => {
     update(s => ({

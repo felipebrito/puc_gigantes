@@ -659,10 +659,8 @@ export default function App() {
             <Suspense fallback={null}>
               <VideoLayers
                 bgUrl={cfg.bgVideoUrl}
-                fgUrl="/videos/Ambiente 8 FG_opt.mp4"
-                lumaUrl="/videos/Ambiente 8 FG_LUMMA_opt.mp4"
+                fgUrl="/videos/Ambiente 8 FG_alpha.webm"
                 opacity={cfg.bgVideoOpacity}
-                lumaMode={cfg.lumaMode ?? 0}
               />
             </Suspense>
           )}
