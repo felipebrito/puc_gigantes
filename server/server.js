@@ -196,10 +196,11 @@ async function trimTransparentRows(buffer, box) {
 
   // Região de busca: expansão generosa do box da detecção.
   // Qualquer pixel fora desta janela é artefato e deve ser ignorado.
+  // Horizontal ampliado para 0.6 (era 0.35) para cobrir orelhas + earPad 0.18 + blur 15px
   const srTop    = Math.max(0,          Math.round(box.y - box.height * 0.7));
   const srBottom = Math.min(height - 1, Math.round(box.y + box.height * 1.1));
-  const srLeft   = Math.max(0,          Math.round(box.x - box.width  * 0.35));
-  const srRight  = Math.min(width - 1,  Math.round(box.x + box.width  * 1.35));
+  const srLeft   = Math.max(0,          Math.round(box.x - box.width  * 0.6));
+  const srRight  = Math.min(width - 1,  Math.round(box.x + box.width  * 1.6));
 
   const alpha = (x, y) => data[(y * width + x) * 4 + 3];
   const isRowEmpty = (y) => { for (let x = srLeft; x <= srRight; x++)  if (alpha(x, y) > 50) return false; return true; };
