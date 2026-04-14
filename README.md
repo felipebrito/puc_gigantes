@@ -23,39 +23,77 @@ Servidor central que processa o "trabalho pesado" da Inteligência Artificial.
 - **Gerenciamento:** Serve como diretório de uploads e ponte de hardware para encoders/sensores.
 
 ### 3. 📺 Projection / Virtual Scene
-Módulo de visualização e projeção mapeada.
-- **Calibração Profissional (Warp):** Sistema de Keystoning com subdivisão de malha para ajuste em superfícies irregulares.
-- **Ambiente Dinâmico:** Suporte a vídeo de fundo 16:9 que preenche a tela, toggles para elementos da cena (Gigantes, Chão, Grid) e controle de pós-processamento (Bloom, DoF, Vignette).
-- **Sincronização Booth:** Spawn instantâneo de novos visitantes via Socket.io com preload de texturas para evitar flickers.
+Módulo de visualização e projeção mapeada em React Three Fiber.
+- **Calibração Profissional (Warp):** Sistema de Keystoning com subdivisão de malha para ajuste em superfícies irregulares. Pontos preservados ao entrar/sair do modo de edição.
+- **Camadas de Vídeo:** BG independente (H.264) + FG com transparência nativa via WebM VP9 alpha — sem dessincronia por ser um único arquivo.
+- **Posicionamento de Visitantes:** Teclas A/S ajustam a altura dos personagens em tempo real, salvo automaticamente ao soltar.
+- **Menu GUI:** Retraído por padrão, abre/fecha com M. Inclui controles de pós-processamento (Bloom, DoF, Vignette, Noise), presets e modo luma.
+- **Sincronização Booth:** Spawn instantâneo de novos visitantes via Socket.io com preload de texturas para evitar flickers. Pool das últimas 10 fotos, sem duplicatas em tela.
 
 ## ⌨️ Atalhos de Teclado (Projeção)
 
 | Tecla | Ação |
 |---|---|
-| **C** | Ativa/Desativa modo de **CALIBRAÇÃO** (Warp) |
+| **C** | Entra/sai do modo de **CALIBRAÇÃO** (Warp) |
 | **1, 2, 3, 4** | Seleciona os cantos (TL, TR, BR, BL) |
 | **Setas** | Move o ponto selecionado (Precisão) |
 | **Shift + Setas** | Move o ponto selecionado (Rápido) |
-| **S** | **SALVA** a calibração no navegador (LocalStorage) |
-| **F** | Toggle Fullscreen (Nativo do Browser) |
+| **S** | **SALVA** a calibração (LocalStorage) |
+| **A / S** | Move visitantes para **cima / baixo** |
+| **Shift + A / S** | Move visitantes (passo maior) |
+| **M** | Abre/fecha o **menu** de configurações |
+
+## 🎬 Formato de Vídeo
+
+| Layer | Formato | Codec | Observação |
+|---|---|---|---|
+| BG (fundo) | `.mp4` | H.264 High, CRF 23 | `faststart`, sem áudio |
+| FG (foreground) | `.webm` | VP9 + alpha (yuva420p) | Transparência nativa, sem luma separado |
+
+Para gerar o WebM com alpha a partir de FG + matte:
+```bash
+ffmpeg -i FG.mp4 -i LUMMA.mp4 \
+  -filter_complex "[0:v]format=yuva420p[fg];[1:v]format=gray[alpha];[fg][alpha]alphamerge[out]" \
+  -map "[out]" -c:v libvpx-vp9 -crf 30 -b:v 0 -auto-alt-ref 0 FG_alpha.webm
+```
 
 ## 🚀 Como Rodar
 
-### Servidor Local
-Vá para a raiz do repositório e execute:
 ```bash
 npm install
-npm run all
+npm start   # inicia server + projection + booth + abre dashboard
 ```
 
 ### Tablet (Booth)
-Vá para a pasta `booth/`:
 ```bash
-npm install
-npm run build
+cd booth
+npm install && npm run build
 npx cap sync android
 ```
-No Android Studio, basta gerar o APK e rodar no tablet dinamicamente.
+No Android Studio, gerar APK e rodar no tablet.
+
+---
+
+## 📋 Changelog
+
+### 2026-04-14
+- Atualiza cena para vídeos **v4** (BG 677MB→52MB, FG+LUMA 524MB→9.3MB WebM alpha)
+
+### 2026-04-13
+- **Warp:** `setEnabled` corrigido para não resetar offsets ao pressionar C — pontos preservados
+- **FG layer:** substituído luma matte shader por **WebM VP9 com alpha nativo** (sem dessincronia)
+- **VideoLayers:** FG e LUMA iniciavam com drift — substituído por arquivo único WebM
+- **A/S:** movimentação vertical dos visitantes sem causar reset de posição X (grupos separados)
+- **Menu M:** GUI lil-gui inicia retraído, abre/fecha com M; C reservado exclusivamente para calibração
+- **VideoLayers v1:** BG + FG com luma matte GLSL shader + sync por evento `loop`
+- Vídeos otimizados com ffmpeg: BG 710MB→38MB, FG 325MB→2MB, LUMA→4MB
+
+### Anterior
+- `npm start` unificado abre dashboard automaticamente
+- Deduplicação de visitantes em tela, pool das últimas 10 fotos
+- Jaw killer segue curva da mandíbula para eliminar colarinho lateral
+- Warp profissional com subdivisão de malha (v0.6.0)
+- Pipeline sprite sheet Three.js
 
 ---
 *Desenvolvido para MCT / PUCRS*
