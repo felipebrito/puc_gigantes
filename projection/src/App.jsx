@@ -526,21 +526,23 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
         </>
       )}
 
-      <group position={[-8, -3, 0]}>
-        <mesh position={[0, 3, 0]}>
-          <boxGeometry args={[0.2, 6, 0.2]} />
-          <meshStandardMaterial color="#ffcc00" emissive="#332200" />
-        </mesh>
-        {[0, 1, 2, 3, 4, 5, 6].map((h) => (
-          <group key={h} position={[0.5, h, 0]}>
-            <Text fontSize={0.35} color="white" anchorX="left" outlineWidth={0.02}>{h}m</Text>
-            <mesh position={[-0.2, 0, 0]}>
-              <boxGeometry args={[0.4, 0.05, 0.05]} />
-              <meshBasicMaterial color="#ffcc00" />
-            </mesh>
-          </group>
-        ))}
-      </group>
+      {cfg.showDebug && (
+        <group position={[-8, -3, 0]}>
+          <mesh position={[0, 3, 0]}>
+            <boxGeometry args={[0.2, 6, 0.2]} />
+            <meshStandardMaterial color="#ffcc00" emissive="#332200" />
+          </mesh>
+          {[0, 1, 2, 3, 4, 5, 6].map((h) => (
+            <group key={h} position={[0.5, h, 0]}>
+              <Text fontSize={0.35} color="white" anchorX="left" outlineWidth={0.02}>{h}m</Text>
+              <mesh position={[-0.2, 0, 0]}>
+                <boxGeometry args={[0.4, 0.05, 0.05]} />
+                <meshBasicMaterial color="#ffcc00" />
+              </mesh>
+            </group>
+          ))}
+        </group>
+      )}
 
       {cfg.showDino && (
         <React.Suspense fallback={<mesh position={[0, 0, -10]}><boxGeometry args={[2, 6, 2]} /><meshBasicMaterial color="red" /></mesh>}>
