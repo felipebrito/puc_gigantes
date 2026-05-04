@@ -1,3 +1,6 @@
+// Garante que o cwd é sempre o diretório do server (resolve módulos corretamente)
+process.chdir(__dirname);
+
 // Patch for Node 25 (util.TextEncoder were removed, though global TextEncoder exists)
 const util = require('util');
 if (!util.TextEncoder) util.TextEncoder = global.TextEncoder;
@@ -160,7 +163,7 @@ io.attach(httpServer);
 
 // Middleware
 app.use(cors());
-app.use(express.static('public')); // Serve uploaded images
+app.use(express.static(path.join(__dirname, 'public'))); // Serve uploaded images
 app.use(express.json());
 
 // Ensure uploads directory exists
@@ -237,7 +240,10 @@ const publicDir = path.join(__dirname, 'public');
 app.get('/',            (req, res) => res.sendFile(path.join(publicDir, 'dashboard.html')));
 app.get('/dashboard',   (req, res) => res.sendFile(path.join(publicDir, 'dashboard.html')));
 app.get('/admin',       (req, res) => res.sendFile(path.join(publicDir, 'admin.html')));
-app.get('/crop-tester', (req, res) => res.sendFile(path.join(publicDir, 'crop-tester.html')));
+app.get('/crop-tester', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(publicDir, 'crop-tester.html'));
+});
 
 // Status de saúde do sistema (usado pelo dashboard)
 app.get('/api/status', async (req, res) => {
@@ -297,11 +303,50 @@ app.get('/crop-images', (req, res) => {
   });
 });
 
+// Lista sessões de debug (imagem raw + landmarks JSON)
+app.get('/debug-sessions', (req, res) => {
+  const debugDir = path.join(__dirname, 'public', 'debug');
+  if (!fs.existsSync(debugDir)) return res.json([]);
+  fs.readdir(debugDir, (err, files) => {
+    if (err) return res.json([]);
+    const sessions = files.filter(f => f.endsWith('.json'))
+      .map(f => f.replace('.json', ''))
+      .sort().reverse();
+    res.json(sessions);
+  });
+});
+
+// Detecta landmarks de qualquer upload e retorna JSON (para o crop-tester)
+app.get('/get-landmarks/:filename', async (req, res) => {
+  try {
+    const filePath = path.join(uploadDir, req.params.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).send('Arquivo não encontrado');
+    const img = await loadImage(filePath);
+    const canvas = createCanvas(img.width, img.height);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const detections = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+    if (!detections) return res.status(422).send('Nenhum rosto detectado');
+    const jawline = detections.landmarks.getJawOutline();
+    const box = detections.detection.box;
+    res.json({
+      imgWidth: img.width, imgHeight: img.height,
+      jawline: jawline.map(p => ({ x: p.x, y: p.y })),
+      box: { x: box.x, y: box.y, width: box.width, height: box.height }
+    });
+  } catch(e) {
+    res.status(500).send(e.message);
+  }
+});
+
 // Crop Tester: processa landmarks + removeBackground e retorna URL
 app.post('/crop-test', express.json(), async (req, res) => {
   try {
     const { file, topPad = 0.5, jawPad = 0.0, earPad = 0.18, neckPad = 0.65, blur = 20 } = req.body;
-    const inputPath = path.join(uploadDir, file);
+    const debugDir = path.join(__dirname, 'public', 'debug');
+    // Tenta uploads primeiro, depois debug (cópia raw)
+    let inputPath = path.join(uploadDir, file);
+    if (!fs.existsSync(inputPath)) inputPath = path.join(debugDir, file);
     if (!fs.existsSync(inputPath)) return res.status(404).send('Arquivo não encontrado');
 
     console.log(`[CropTest] Iniciando processamento de alta precisão para ${file}...`);
@@ -382,7 +427,7 @@ app.post('/crop-test', express.json(), async (req, res) => {
     fctx.drawImage(aiMaskImg, 0, 0); // Crop AI
     fctx.drawImage(maskCanvas, 0, 0); // Crop Landmarks
     
-    const resultBuffer = await trimTransparentRows(finalCanvas.toBuffer('image/png'));
+    const resultBuffer = await trimTransparentRows(finalCanvas.toBuffer('image/png'), box);
 
     const outName = 'test-result.png';
     fs.writeFileSync(path.join(uploadDir, outName), resultBuffer);
@@ -488,8 +533,32 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
       const jawline = detections.landmarks.getJawOutline();
       const box = detections.detection.box;
 
+      // Salvar raw + landmarks para debug visual
+      try {
+        const debugDir = path.join(__dirname, 'public', 'debug');
+        if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
+        const debugBase = rawFileName.replace(/\.[^.]+$/, '');
+        fs.copyFileSync(rawPath, path.join(debugDir, `${debugBase}.jpg`));
+        fs.writeFileSync(path.join(debugDir, `${debugBase}.json`), JSON.stringify({
+          imgWidth: rawImg.width, imgHeight: rawImg.height,
+          jawline: jawline.map(p => ({ x: p.x, y: p.y })),
+          box: { x: box.x, y: box.y, width: box.width, height: box.height }
+        }));
+        // Mantém apenas os últimos 5 para não acumular
+        const files = fs.readdirSync(debugDir).filter(f => f.endsWith('.json'))
+          .map(f => ({ f, t: fs.statSync(path.join(debugDir, f)).mtimeMs }))
+          .sort((a, b) => b.t - a.t);
+        files.slice(5).forEach(({ f }) => {
+          const base = f.replace('.json', '');
+          ['json','jpg','png'].forEach(ext => {
+            const p = path.join(debugDir, `${base}.${ext}`);
+            if (fs.existsSync(p)) fs.unlinkSync(p);
+          });
+        });
+      } catch(e) { console.warn('[Debug] Falha ao salvar debug:', e.message); }
+
       // Parâmetros do "Shoulder Killer" (Conforme 17:52)
-      const topPad = 0.5, jawPad = 0.0, earPad = 0.18, neckPad = 0.7, blur = 15;
+      const topPad = 0.5, jawPad = 0.11, earPad = 0.08, neckPad = 0.9, blur = 19;
 
       // 2. Obter Máscara Facial (Landmarks)
       const maskCanvas = createCanvas(rawImg.width, rawImg.height);
@@ -523,17 +592,20 @@ app.post('/upload', upload.single('photo'), async (req, res) => {
       // JAW KILLER: apaga tudo abaixo do jawline seguindo a curva real do rosto.
       // Usa destination-out com blur suave para não criar borda dura.
       // Margem de 8% de box.height abaixo dos pontos para preservar o queixo.
-      const jawMargin = box.height * 0.08;
+      const jawMargin = box.height * 0.13;
       mctx.filter = 'blur(6px)';
       mctx.globalCompositeOperation = 'destination-out';
       mctx.fillStyle = 'black';
       mctx.beginPath();
+      // Desce verticalmente até jaw[0] para não cortar a orelha esquerda lateralmente
       mctx.moveTo(0, rawImg.height);
-      mctx.lineTo(0, jawline[0].y + jawMargin);
+      mctx.lineTo(jawline[0].x, rawImg.height);
+      mctx.lineTo(jawline[0].x, jawline[0].y + jawMargin);
       for (let i = 0; i < jawline.length; i++) {
           mctx.lineTo(jawline[i].x, jawline[i].y + jawMargin);
       }
-      mctx.lineTo(rawImg.width, jawline[16].y + jawMargin);
+      // Desce verticalmente a partir de jaw[16] para não cortar a orelha direita lateralmente
+      mctx.lineTo(jawline[16].x, rawImg.height);
       mctx.lineTo(rawImg.width, rawImg.height);
       mctx.closePath();
       mctx.fill();

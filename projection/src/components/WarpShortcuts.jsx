@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 
-export function WarpShortcuts({ warp, onCommit, onMoveVertex, onYOffset }) {
-  const callbacksRef = useRef({ warp, onCommit, onMoveVertex, onYOffset })
-  useEffect(() => { callbacksRef.current = { warp, onCommit, onMoveVertex, onYOffset } })
+export function WarpShortcuts({ warp, onCommit, onMoveVertex, onYOffset, showStats, setShowStats }) {
+  const callbacksRef = useRef({ warp, onCommit, onMoveVertex, onYOffset, showStats, setShowStats })
+  useEffect(() => { callbacksRef.current = { warp, onCommit, onMoveVertex, onYOffset, showStats, setShowStats } })
 
   useEffect(() => {
     const getCornerIdx = (n, cols, rows) => {
@@ -14,38 +14,59 @@ export function WarpShortcuts({ warp, onCommit, onMoveVertex, onYOffset }) {
     };
 
     const onKeyDown = (e) => {
-      const { warp, onMoveVertex, onCommit, onYOffset } = callbacksRef.current;
+      const { warp, onMoveVertex, onCommit, onYOffset, setShowStats } = callbacksRef.current;
       if (!warp) return;
       const { state, setSelectedIdx, setEditing, setEnabled } = warp;
 
       const key = e.key.toLowerCase();
 
-      // C - Toggle Calibragem: entra em (enabled+editing), sai em (disabled+not-editing)
+      // F - Fullscreen
+      if (key === 'f') {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(err => console.error(err));
+        } else {
+          document.exitFullscreen();
+        }
+        return;
+      }
+
+      // S - Toggle FPS (Stats)
+      if (key === 's') {
+        setShowStats(prev => !prev);
+        return;
+      }
+
+      // M - Toggle GUI (Sumir da tela)
+      if (key === 'm') {
+        const gui = window.__gui;
+        if (gui) {
+          const isHidden = gui.domElement.style.display === 'none';
+          gui.domElement.style.display = isHidden ? 'block' : 'none';
+        }
+        return;
+      }
+
+      // Q / A — ajusta Y dos visitantes
+      if (key === 'q' || key === 'a') {
+        const step = e.shiftKey ? 0.2 : 0.05;
+        const delta = key === 'q' ? step : -step;
+        onYOffset?.(delta);
+        return;
+      }
+
+      // C - Toggle Calibragem
       if (key === 'c') {
-        if (!state.editing) {
+        if (!state.enabled) {
           setEnabled(true);
           setEditing(true);
+        } else if (state.editing) {
+          onCommit();
+          setEditing(false);
+          setEnabled(true);
         } else {
           setEditing(false);
           setEnabled(false);
         }
-        return;
-      }
-
-      // M - Toggle GUI
-      if (key === 'm') {
-        const gui = window.__gui;
-        if (gui) {
-          gui._closed ? gui.open() : gui.close();
-        }
-        return;
-      }
-
-      // A / S — ajusta Y dos visitantes
-      if (key === 'a' || key === 's') {
-        const step = e.shiftKey ? 0.2 : 0.05;
-        const delta = key === 'a' ? step : -step;
-        onYOffset?.(delta);
         return;
       }
 
@@ -55,13 +76,6 @@ export function WarpShortcuts({ warp, onCommit, onMoveVertex, onYOffset }) {
       if (['1', '2', '3', '4'].includes(e.key)) {
         const { state } = callbacksRef.current.warp;
         setSelectedIdx(getCornerIdx(parseInt(e.key), state.cols, state.rows));
-        return;
-      }
-
-      // S - Save
-      if (key === 's') {
-        onCommit();
-        alert('Calibração salva!');
         return;
       }
 
@@ -84,8 +98,8 @@ export function WarpShortcuts({ warp, onCommit, onMoveVertex, onYOffset }) {
 
     const onKeyUp = (e) => {
       const { onYOffset } = callbacksRef.current;
-      // Ao soltar ↑ ou ↓ fora do warp editing, salva
-      if (e.key === 'a' || e.key === 's') {
+      const key = e.key.toLowerCase();
+      if (key === 'q' || key === 'a') {
         onYOffset?.(0, true);
       }
     };

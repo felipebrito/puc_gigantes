@@ -613,9 +613,10 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
 export default function App() {
   const [sourceCanvas, setSourceCanvas] = useState(null);
   const sourceCanvasRef = useRef(null);
-  useEffect(() => { sourceCanvasRef.current = sourceCanvas; }, [sourceCanvas]);
-
   const [cfg, setCfg] = useState(loadSavedConfig);
+  const [showStats, setShowStats] = useState(false);
+  
+  useEffect(() => { sourceCanvasRef.current = sourceCanvas; }, [sourceCanvas]);
 
   // Auto-save on any change
   useEffect(() => {
@@ -628,6 +629,8 @@ export default function App() {
     <div style={{ width: '100vw', height: '100vh', background: '#000', overflow: 'hidden', position: 'relative' }}>
       <WarpShortcuts
         warp={warp}
+        showStats={showStats}
+        setShowStats={setShowStats}
         onCommit={() => {
           warp.commitOffsets();
           if (window.__warpSync) window.__warpSync();
@@ -652,7 +655,7 @@ export default function App() {
           gl={{ preserveDrawingBuffer: true }} // Required to read as texture
           camera={{ fov: 10, position: [0, 0, 40], near: 0.1, far: 1000 }}
         >
-          <Stats />
+          {showStats && <Stats />}
           <color attach="background" args={['#000']} />
           {/* Vídeo de fundo condicional para evitar overhead e hooks pendentes */}
           {cfg.enableBgVideo && (
