@@ -628,7 +628,9 @@ export default function App() {
   const warp = useWarpState();
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#000', overflow: 'hidden', position: 'relative' }}>
+    <div 
+      className={warp.state.editing ? '' : 'hide-cursor'}
+      style={{ width: '100vw', height: '100vh', background: '#000', overflow: 'hidden', position: 'relative' }}>
       <WarpShortcuts
         warp={warp}
         showStats={showStats}

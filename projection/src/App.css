@@ -13,3 +13,7 @@ html {
   width: 100%;
   height: 100%;
 }
+
+.hide-cursor {
+  cursor: none !important;
+}
