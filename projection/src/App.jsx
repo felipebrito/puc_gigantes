@@ -514,7 +514,8 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
       <directionalLight position={[10, 20, 10]} intensity={2.0} castShadow />
 
       {!cfg.enableBgVideo && <Sky sunPosition={[100, 20, 100]} turbidity={0.1} rayleigh={0.5} />}
-      <Environment preset="park" background={false} />
+      {/* Environment preset="park" busca arquivos na internet. Removido para funcionar offline. */}
+      {/* <Environment preset="park" background={false} /> */}
 
       {cfg.showFloor && (
         <>
