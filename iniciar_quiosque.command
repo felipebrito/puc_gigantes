@@ -23,10 +23,10 @@ echo "📱 Iniciando Booth..."
 npm --prefix "$ROOT/booth" run server > /tmp/gigantes_booth.log 2>&1 &
 
 # 3. Aguarda servidor e projeção responderem de verdade
-echo "⏳ Aguardando servidor (porta 3000)..."
-until curl -sk http://localhost:3000 > /dev/null 2>&1; do sleep 1; done
+echo "⏳ Aguardando servidor (porta 3001)..."
+until curl -s http://localhost:3001 > /dev/null 2>&1; do sleep 1; done
 echo "✅ Servidor OK. Aguardando projeção (porta 5200)..."
-until curl -sk http://localhost:5200 > /dev/null 2>&1; do sleep 1; done
+until curl -s http://localhost:5200 > /dev/null 2>&1; do sleep 1; done
 echo "✅ Projeção OK."
 sleep 2
 
