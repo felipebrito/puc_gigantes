@@ -9,9 +9,13 @@ echo "🦕 Iniciando Ecossistema Gigantes (Server + Booth + Projection)..."
 # O 'npm start' roda o servidor na 3000, booth na 5300 e projection na 5200
 npm start &
 
-# 2. Aguarda o sistema subir (modelos 3D podem demorar)
-echo "⏳ Aguardando inicialização (12 segundos)..."
-sleep 12
+# 2. Aguarda o servidor e a projeção ficarem disponíveis (polling real)
+echo "⏳ Aguardando servidor (porta 3000)..."
+until curl -sk http://localhost:3000 > /dev/null 2>&1; do sleep 1; done
+echo "✅ Servidor OK. Aguardando projeção (porta 5200)..."
+until curl -sk http://localhost:5200 > /dev/null 2>&1; do sleep 1; done
+echo "✅ Projeção OK."
+sleep 2
 
 # 3. Abre o Chrome em modo Kiosk apontando para a Projeção (Porta 5200)
 echo "📺 Abrindo Projeção no Chrome..."

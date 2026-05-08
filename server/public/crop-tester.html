@@ -2,51 +2,55 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Crop Tester</title>
+<title>Crop Tester — Debug em Tempo Real</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #1a1a1a; color: #eee; font-family: monospace; display: flex; height: 100vh; }
 
   #sidebar {
-    width: 320px; min-width: 320px; background: #252525; padding: 20px;
-    display: flex; flex-direction: column; gap: 16px; overflow-y: auto;
+    width: 300px; min-width: 300px; background: #252525; padding: 16px;
+    display: flex; flex-direction: column; gap: 14px; overflow-y: auto;
   }
-  h1 { font-size: 16px; color: #aaa; }
+  h1 { font-size: 15px; color: #aaa; }
 
-  .section { display: flex; flex-direction: column; gap: 10px; }
-  .section label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  .section { display: flex; flex-direction: column; gap: 8px; }
+  .section > label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
 
   select, button {
-    width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444;
+    width: 100%; padding: 7px; border-radius: 4px; border: 1px solid #444;
     background: #333; color: #eee; font-family: monospace; font-size: 13px; cursor: pointer;
   }
-  button { background: #0066cc; border-color: #0066cc; font-size: 14px; padding: 10px; }
+  button { background: #0066cc; border-color: #0066cc; padding: 9px; }
   button:hover { background: #0077ee; }
   button:disabled { background: #444; border-color: #444; color: #666; cursor: not-allowed; }
-  button.secondary { background: #333; border-color: #555; }
-  button.secondary:hover { background: #444; }
+  button.sec { background: #333; border-color: #555; }
+  button.sec:hover { background: #444; }
 
-  .slider-row { display: flex; flex-direction: column; gap: 4px; }
-  .slider-row .label-row { display: flex; justify-content: space-between; align-items: center; }
-  .slider-row span { font-size: 13px; }
-  .slider-row .val { color: #4af; font-weight: bold; min-width: 40px; text-align: right; }
+  .slider-row { display: flex; flex-direction: column; gap: 3px; }
+  .slider-row .lrow { display: flex; justify-content: space-between; }
+  .slider-row span { font-size: 12px; }
+  .slider-row .val { color: #4af; font-weight: bold; min-width: 38px; text-align: right; }
   input[type=range] { width: 100%; accent-color: #4af; }
 
-  #status { font-size: 12px; color: #fa4; min-height: 18px; }
+  #status { font-size: 11px; color: #fa4; min-height: 16px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; }
+  .legend span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
   #main {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    flex: 1; display: flex; align-items: center; justify-content: center;
     gap: 20px; padding: 20px; overflow: auto;
   }
-
-  .previews { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
-  .preview-box { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-  .preview-box span { font-size: 11px; color: #888; }
-
-  canvas { border: 1px solid #444; border-radius: 4px; max-width: 500px; max-height: 60vh; object-fit: contain; }
-  img#result { border: 1px solid #444; border-radius: 4px; max-width: 400px; max-height: 60vh; object-fit: contain; background: repeating-conic-gradient(#333 0% 25%, #2a2a2a 0% 50%) 0 0 / 16px 16px; }
-
-  #coords { font-size: 11px; color: #666; }
+  .preview-box { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .preview-box > span { font-size: 11px; color: #888; }
+  canvas { border: 1px solid #444; border-radius: 4px; }
+  img#result {
+    border: 1px solid #444; border-radius: 4px; max-width: 400px; max-height: 75vh;
+    background: repeating-conic-gradient(#333 0% 25%, #2a2a2a 0% 50%) 0 0 / 14px 14px;
+    display: none;
+  }
+  #noDebug { color: #fa4; font-size: 13px; text-align: center; padding: 20px; }
 </style>
 </head>
 <body>
@@ -55,261 +59,426 @@
   <h1>🎯 Crop Tester</h1>
 
   <div class="section">
-    <label>Imagem</label>
-    <select id="imgSelect"><option value="">Carregando...</option></select>
-    <button class="secondary" onclick="loadSelected()">Carregar</button>
+    <label>Capturar foto</label>
+    <video id="camVideo" autoplay playsinline muted style="width:100%;border-radius:4px;border:1px solid #444;display:none;max-height:160px;object-fit:cover"></video>
+    <canvas id="camSnap" style="display:none"></canvas>
+    <div style="display:flex;gap:6px">
+      <button class="sec" id="btnCam" onclick="toggleCam()" style="flex:1">📷 Abrir câmera</button>
+      <button class="sec" id="btnSnap" onclick="snap()" style="flex:1;display:none">⚡ Capturar</button>
+    </div>
   </div>
 
   <div class="section">
-    <label>Recorte Automático (IA)</label>
-    <p style="font-size:12px;color:#aaa">O servidor usará FaceAPI para detectar o maxilar e cortar o rosto perfeitamente, removendo ombros e pescoço antes de aplicar a remoção de fundo.</p>
+    <label>Foto</label>
+    <select id="dbgSelect"><option value="">Carregando...</option></select>
+    <button class="sec" onclick="loadSelected()">Carregar</button>
   </div>
 
-  <button id="btnProcess" onclick="process()" disabled>Processar Recorte</button>
+  <div class="section">
+    <label>Máscara (tempo real)</label>
 
-  <div id="status"></div>
+    <div class="slider-row">
+      <div class="lrow"><span>earWidth — Largura Orelha (X)</span><span class="val" id="earWidthVal">0.30</span></div>
+      <input type="range" id="earWidth" min="0" max="0.8" step="0.01" value="0.08" oninput="redraw()">
+    </div>
+    <div class="slider-row">
+      <div class="lrow"><span>neckTaper — Afunilar Pescoço</span><span class="val" id="neckPadVal">0.70</span></div>
+      <input type="range" id="neckPad" min="0" max="1.5" step="0.05" value="0.75" oninput="redraw()">
+    </div>
+    <div class="slider-row">
+      <div class="lrow"><span>jawPad — Queixo ±Y</span><span class="val" id="jawPadVal">0.00</span></div>
+      <input type="range" id="jawPad" min="-0.2" max="0.5" step="0.01" value="0.10" oninput="redraw()">
+    </div>
+    <div class="slider-row">
+      <div class="lrow"><span>jawMargin — Jaw Killer Y</span><span class="val" id="jawMarginVal">0.08</span></div>
+      <input type="range" id="jawMargin" min="0" max="0.3" step="0.01" value="0.11" oninput="redraw()">
+    </div>
+    <div class="slider-row">
+      <div class="lrow"><span>blur — Suavização</span><span class="val" id="blurVal">15</span></div>
+      <input type="range" id="blur" min="0" max="30" step="1" value="15" oninput="redraw()">
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#4af"></span> Máscara (earPad/neckPad)</span>
+    <span><span class="dot" style="background:#ff0"></span> Jaw Killer (jawMargin)</span>
+    <span><span class="dot" style="background:#f44"></span> Região apagada</span>
+  </div>
 
   <div class="section">
-    <label>Configurações de Ajuste</label>
-    <div class="slider-row">
-      <div class="label-row">
-        <span>Margem Superior (Cabelo)</span>
-        <span class="val" id="topPadVal">0.5</span>
-      </div>
-      <input type="range" id="topPad" min="0" max="1" step="0.05" value="0.5" oninput="updateParams()">
-    </div>
-    <div class="slider-row">
-      <div class="label-row">
-        <span>Margem Inferior (Queixo)</span>
-        <span class="val" id="jawPadVal">0.0</span>
-      </div>
-      <input type="range" id="jawPad" min="-0.2" max="0.5" step="0.05" value="0.0" oninput="updateParams()">
-    </div>
-    <div class="slider-row">
-      <div class="label-row">
-        <span>Margem Orelhas (Topo)</span>
-        <span class="val" id="earPadVal">0</span>
-      </div>
-      <input type="range" id="earPad" min="0" max="0.5" step="0.05" value="0" oninput="updateParams()">
-    </div>
-    <div class="slider-row">
-      <div class="label-row">
-        <span>Afunilar (Remover Ombros)</span>
-        <span class="val" id="neckPadVal">0.7</span>
-      </div>
-      <input type="range" id="neckPad" min="0" max="1.5" step="0.05" value="0.7" oninput="updateParams()">
-    </div>
-    <div class="slider-row">
-      <div class="label-row">
-        <span>Suavização (Bordas)</span>
-        <span class="val" id="blurVal">12</span>
-      </div>
-      <input type="range" id="blur" min="0" max="25" step="1" value="12" oninput="updateParams()">
-    </div>
-    
-    <button onclick="applyPreset('biometric')" style="margin-top:10px; background:#444; font-size:11px">✨ Preset Biométrico</button>
+    <label>Processar no servidor</label>
+    <button id="btnProcess" onclick="processServer()" disabled>Aplicar + Remover Fundo</button>
+    <div id="status"></div>
   </div>
 
   <div class="section" style="margin-top:auto">
-    <label>Instruções</label>
-    <p style="font-size:11px;color:#666">Ajuste os valores e clique em "Processar Recorte" para ver como a máscara se comporta. O objetivo é remover todo o pescoço e ombros.</p>
+    <label>Copiar valores atuais</label>
+    <button class="sec" onclick="copyValues()">📋 Copiar para o servidor</button>
+    <pre id="copyOut" style="font-size:10px;color:#888;white-space:pre-wrap"></pre>
   </div>
 </div>
 
 <div id="main">
-  <div class="previews">
-    <div class="preview-box">
-      <span>Original + crop overlay</span>
-      <canvas id="cvOriginal"></canvas>
-    </div>
-    <div class="preview-box">
-      <span>Resultado (sem fundo)</span>
-      <img id="result" style="display:none">
-    </div>
+  <div id="noDebug" style="display:none">
+    Tire uma foto no booth para gerar a primeira sessão de debug.<br>
+    A imagem raw + landmarks serão salvos automaticamente.
+  </div>
+  <div class="preview-box">
+    <span>Original + máscara overlay</span>
+    <canvas id="cv"></canvas>
+  </div>
+  <div class="preview-box">
+    <span>Resultado do servidor</span>
+    <img id="result">
   </div>
 </div>
 
 <script>
-  let img = null;
-  let currentFile = null;
-  let lastLandmarks = null;
+let lm = null; // landmarks { jawline, box, imgWidth, imgHeight }
+let img = null;
+let currentBase = null;
 
-  // Carregar lista de imagens
-  async function loadList() {
-    const sel = document.getElementById('imgSelect');
+// ── Carregar lista de fotos (debug sessions + uploads existentes) ─────────────
+async function loadList() {
+  const sel = document.getElementById('dbgSelect');
+  try {
+    const [dbgR, upR] = await Promise.all([
+      fetch('/debug-sessions').then(r => r.json()).catch(() => []),
+      fetch('/crop-images').then(r => r.json()).catch(() => []),
+    ]);
+
+    const opts = [];
+    if (dbgR.length) {
+      opts.push('<optgroup label="Debug (raw, com landmarks)">');
+      dbgR.forEach(s => opts.push(`<option value="debug:${s}">${s}</option>`));
+      opts.push('</optgroup>');
+    }
+    if (upR.length) {
+      opts.push('<optgroup label="Uploads existentes">');
+      upR.forEach(f => opts.push(`<option value="upload:${f}">${f}</option>`));
+      opts.push('</optgroup>');
+    }
+
+    if (!opts.length) {
+      sel.innerHTML = '<option>Nenhuma foto encontrada</option>';
+      document.getElementById('noDebug').style.display = 'block';
+      return;
+    }
+    sel.innerHTML = opts.join('');
+    loadSelected();
+  } catch(e) {
+    sel.innerHTML = '<option>Erro ao carregar</option>';
+  }
+}
+
+async function loadSelected() {
+  const val = document.getElementById('dbgSelect').value;
+  if (!val) return;
+  document.getElementById('noDebug').style.display = 'none';
+  document.getElementById('result').style.display = 'none';
+  lm = null; img = null;
+
+  const [type, name] = val.split(/:(.+)/);
+
+  if (type === 'debug') {
+    // JSON de landmarks já existe
+    currentBase = name;
+    setStatus('⏳ Carregando landmarks...');
     try {
-      const r = await fetch('/crop-images');
-      const files = await r.json();
-      sel.innerHTML = files.map(f => `<option value="${f}">${f}</option>`).join('');
-      if (files.length) loadSelected();
-    } catch(e) {
-      sel.innerHTML = '<option>Erro ao carregar</option>';
-    }
-  }
-
-  function applyPreset(mode) {
-    if (mode === 'biometric') {
-      document.getElementById('topPad').value = 0.5;
-      document.getElementById('jawPad').value = 0.0;
-      document.getElementById('earPad').value = 0.15;
-      document.getElementById('neckPad').value = 0.7;
-      document.getElementById('blur').value = 12;
-      updateParams();
-    }
-  }
-
-  function updateParams() {
-    document.getElementById('topPadVal').textContent = document.getElementById('topPad').value;
-    document.getElementById('jawPadVal').textContent = document.getElementById('jawPad').value;
-    document.getElementById('earPadVal').textContent = document.getElementById('earPad').value;
-    document.getElementById('neckPadVal').textContent = document.getElementById('neckPad').value;
-    document.getElementById('blurVal').textContent = document.getElementById('blur').value;
-    drawOverlay();
-  }
-
-  function loadSelected() {
-    const sel = document.getElementById('imgSelect');
-    if (!sel.value) return;
-    currentFile = sel.value;
-    lastLandmarks = null;
+      const r = await fetch(`/debug/${name}.json`);
+      if (!r.ok) throw new Error(`HTTP ${r.status} — /debug/${name}.json`);
+      lm = await r.json();
+    } catch(e) { setStatus('❌ ' + e.message); return; }
     img = new Image();
-    img.onload = () => { drawOverlay(); document.getElementById('btnProcess').disabled = false; };
-    img.src = '/uploads/' + currentFile;
-    document.getElementById('result').style.display = 'none';
-    setStatus('');
+    img.onload = () => { redraw(); document.getElementById('btnProcess').disabled = false; setStatus(''); };
+    img.onerror = () => setStatus('❌ Imagem não encontrada');
+    img.src = `/debug/${name}.jpg?t=${Date.now()}`;
+  } else {
+    // Upload — detectar landmarks via servidor
+    currentBase = name.replace(/\.[^.]+$/, '');
+    setStatus('⏳ Detectando landmarks (aguarde)...');
+    document.getElementById('btnProcess').disabled = true;
+    try {
+      const r = await fetch(`/get-landmarks/${encodeURIComponent(name)}`);
+      if (!r.ok) throw new Error(await r.text());
+      lm = await r.json();
+    } catch(e) { setStatus('❌ ' + e.message); return; }
+    img = new Image();
+    img.onload = () => { redraw(); document.getElementById('btnProcess').disabled = false; setStatus('✅ Landmarks detectados'); };
+    img.onerror = () => setStatus('❌ Imagem não encontrada');
+    img.src = `/uploads/${name}?t=${Date.now()}`;
+  }
+}
+
+// ── Parâmetros atuais ────────────────────────────────────────────────────────
+function params() {
+  return {
+    earPad:    parseFloat(document.getElementById('earWidth').value),
+    neckPad:   parseFloat(document.getElementById('neckPad').value),
+    jawPad:    parseFloat(document.getElementById('jawPad').value),
+    jawMargin: parseFloat(document.getElementById('jawMargin').value),
+    blur:      parseInt(document.getElementById('blur').value),
+  };
+}
+
+function updateLabels(p) {
+  document.getElementById('earWidthVal').textContent  = p.earPad.toFixed(2);
+  document.getElementById('neckPadVal').textContent   = p.neckPad.toFixed(2);
+  document.getElementById('jawPadVal').textContent    = p.jawPad.toFixed(2);
+  document.getElementById('jawMarginVal').textContent = p.jawMargin.toFixed(2);
+  document.getElementById('blurVal').textContent      = p.blur;
+}
+
+// ── getPt (mesma lógica do servidor) ─────────────────────────────────────────
+function buildGetPt(jawline, box, earPad, neckPad, jawPad, scale) {
+  return (i) => {
+    const distFromCenter = Math.abs(i - 8) / 8;
+    // earPad define a largura máxima nas orelhas (i=0 e i=16)
+    // neckPad afunila o pescoço/queixo mas NÃO reduz as orelhas
+    const earExpand = box.width * earPad; // expansão lateral nas orelhas
+    const taperReduction = neckPad * 1.5 * (1 - Math.pow(distFromCenter, 0.5)); // 0 nas orelhas, máx no queixo
+    const cSidePad = earExpand * Math.max(0, 1 - taperReduction);
+    let hShift = (i < 8) ? -cSidePad : (i > 8 ? cSidePad : 0);
+    let sShaveY = 0;
+    if (neckPad > 0.1 && (i < 6 || i > 10)) {
+      sShaveY = -box.height * (neckPad * 0.45 * (1 - distFromCenter));
+    }
+    return {
+      x: (jawline[i].x + hShift) * scale,
+      y: (jawline[i].y + box.height * jawPad + sShaveY) * scale,
+    };
+  };
+}
+
+// ── Desenhar overlay ──────────────────────────────────────────────────────────
+function redraw() {
+  try {
+  const p = params();
+  updateLabels(p);
+  if (!img || !lm) return;
+  if (!lm.jawline || !lm.box) { setStatus('❌ lm sem jawline/box'); return; }
+  if (lm.jawline.length < 17) { setStatus(`❌ jawline só tem ${lm.jawline.length} pts`); return; }
+
+  const cv  = document.getElementById('cv');
+  const scale = Math.min(600 / lm.imgWidth, (window.innerHeight - 60) / lm.imgHeight, 1);
+  cv.width  = lm.imgWidth  * scale;
+  cv.height = lm.imgHeight * scale;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(img, 0, 0, cv.width, cv.height);
+
+  const { jawline, box } = lm;
+  const getPt = buildGetPt(jawline, box, p.earPad, p.neckPad, p.jawPad, scale);
+  const jawMarginPx = box.height * p.jawMargin * scale;
+
+  window._s=1;
+  // ── 1. Escurecer área FORA da máscara principal (o que será apagado pelo shape) ──
+  ctx.save();
+  ctx.globalAlpha = 0.65;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.globalAlpha = 1;
+
+  window._s=2;
+  // ── 2. Clipar para mostrar imagem dentro da máscara principal ──
+  ctx.save();
+  const startPt = getPt(0);
+  ctx.beginPath();
+  ctx.moveTo(startPt.x, startPt.y);
+  for (let i = 0; i < jawline.length - 1; i++) {
+    const pt = getPt(i), next = getPt(i + 1);
+    ctx.quadraticCurveTo(pt.x, pt.y, (pt.x + next.x) / 2, (pt.y + next.y) / 2);
+  }
+  const endPt = getPt(16);
+  ctx.lineTo(endPt.x, endPt.y);
+  ctx.lineTo(cv.width, endPt.y);
+  ctx.lineTo(cv.width, 0);
+  ctx.lineTo(0, 0);
+  ctx.lineTo(0, startPt.y);
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  ctx.restore();
+
+  window._s=3;
+  // ── 3. Mostrar em VERMELHO o que o Jaw Killer vai apagar ──
+  // Usa os pontos RAW (sem earPad) pois o jaw killer no servidor usa jawline[i].x direto
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = '#f00';
+  ctx.beginPath();
+  ctx.moveTo(jawline[0].x * scale, cv.height);
+  ctx.lineTo(jawline[0].x * scale, jawline[0].y * scale + jawMarginPx);
+  for (let i = 0; i < jawline.length; i++) {
+    ctx.lineTo(jawline[i].x * scale, jawline[i].y * scale + jawMarginPx);
+  }
+  ctx.lineTo(jawline[16].x * scale, cv.height);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  window._s=4;
+  // ── 4. Contorno da máscara (ciano) + pontos ──
+  ctx.strokeStyle = '#4af';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  const sp2 = getPt(0); ctx.moveTo(sp2.x, sp2.y);
+  for (let i = 0; i < jawline.length - 1; i++) {
+    const pt = getPt(i), next = getPt(i + 1);
+    ctx.quadraticCurveTo(pt.x, pt.y, (pt.x + next.x) / 2, (pt.y + next.y) / 2);
+  }
+  const ep2 = getPt(16); ctx.lineTo(ep2.x, ep2.y);
+  ctx.stroke();
+
+  ctx.fillStyle = '#4af';
+  for (let i = 0; i < jawline.length; i++) {
+    const pt = getPt(i);
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2); ctx.fill();
   }
 
-  function drawOverlay() {
-    if (!img) return;
-    const cv = document.getElementById('cvOriginal');
-    const scale = Math.min(500 / img.width, (window.innerHeight * 0.6) / img.height, 1);
-    cv.width  = img.width  * scale;
-    cv.height = img.height * scale;
-    const ctx = cv.getContext('2d');
-    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  window._s=5;
+  // ── 5. Linha do Jaw Killer (amarelo) — posição raw + jawMargin ──
+  ctx.fillStyle = '#ff0';
+  ctx.strokeStyle = '#ff0';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  // linha tracejada conectando os pontos
+  ctx.beginPath();
+  for (let i = 0; i < jawline.length; i++) {
+    const x = jawline[i].x * scale;
+    const y = (jawline[i].y + box.height * p.jawMargin) * scale;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // pontos
+  ctx.setLineDash([]);
+  for (let i = 0; i < jawline.length; i++) {
+    const x = jawline[i].x * scale;
+    const y = (jawline[i].y + box.height * p.jawMargin) * scale;
+    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
+  // Debug: confirmar que redraw rodou
+  ctx.fillStyle = '#fff';
+  ctx.font = '13px monospace';
+  ctx.fillText(`earW:${p.earPad.toFixed(2)} neck:${p.neckPad.toFixed(2)} jawM:${p.jawMargin.toFixed(2)}`, 8, 18);
+  } catch(e) {
+    const msg = 'redraw§' + (window._s||'?') + ': ' + e.message;
+    document.getElementById('status').textContent = '❌ ' + msg;
+    document.getElementById('status').title = e.stack || '';
+    console.error(msg, e);
+  }
+}
 
-    if (lastLandmarks) {
-      const { jawline, box } = lastLandmarks;
-      const topPad = parseFloat(document.getElementById('topPad').value);
-      const jawPad = parseFloat(document.getElementById('jawPad').value);
-      const earPad = parseFloat(document.getElementById('earPad').value);
-      const neckPad = parseFloat(document.getElementById('neckPad').value);
-      
-      // Escurecer tudo fora da máscara
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(0, 0, cv.width, cv.height);
+// ── Processar no servidor ─────────────────────────────────────────────────────
+async function processServer() {
+  if (!currentBase) return;
+  const p = params();
+  const btn = document.getElementById('btnProcess');
+  btn.disabled = true;
+  setStatus('⏳ Processando no servidor...');
+  try {
+    const val = document.getElementById('dbgSelect').value;
+    const [type, name] = val.split(/:(.+)/);
+    // debug: usa o arquivo raw da pasta /debug/ (cópia antes de ser apagado)
+    const fileName = type === 'upload' ? name : (name + '.jpg');
+    const r = await fetch('/crop-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: fileName, ...p })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const { url } = await r.json();
+    const res = document.getElementById('result');
+    res.src = url + '?t=' + Date.now();
+    res.style.display = 'block';
+    setStatus('✅ Pronto!');
+  } catch(e) {
+    setStatus('❌ ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
-      ctx.save();
-      ctx.beginPath();
-      
-      const oEarM = box.width * earPad;
-      const oTaper = neckPad;
+// ── Copiar valores ────────────────────────────────────────────────────────────
+function copyValues() {
+  const p = params();
+  const txt = `const topPad = 0.5, jawPad = ${p.jawPad}, earPad = ${p.earPad}, neckPad = ${p.neckPad}, blur = ${p.blur};\nconst jawMargin = box.height * ${p.jawMargin};`;
+  navigator.clipboard.writeText(txt).catch(() => {});
+  document.getElementById('copyOut').textContent = txt;
+}
 
-      const getPt = (i) => {
-          const distFromCenter = Math.abs(i - 8) / 8;
-          // V-Taper Intuitivo: 1 = maior afunilamento (Shoulder Killer)
-          const cSidePad = oEarM * (1 - (oTaper * 1.5 * (1 - Math.pow(distFromCenter, 0.5))));
-          let hShift = (i < 8) ? -cSidePad : (i > 8 ? cSidePad : 0);
-          let sShaveY = 0;
-          if (oTaper > 0.1 && (i < 6 || i > 10)) {
-              sShaveY = -box.height * (oTaper * 0.45 * (1 - distFromCenter));
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+// ── Câmera ────────────────────────────────────────────────────────────────────
+let camStream = null;
+async function toggleCam() {
+  const video = document.getElementById('camVideo');
+  const btnCam = document.getElementById('btnCam');
+  const btnSnap = document.getElementById('btnSnap');
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+    video.style.display = 'none';
+    btnCam.textContent = '📷 Abrir câmera';
+    btnSnap.style.display = 'none';
+    return;
+  }
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 1280, height: 720 }, audio: false });
+    video.srcObject = camStream;
+    video.style.display = 'block';
+    btnCam.textContent = '✖ Fechar câmera';
+    btnSnap.style.display = 'block';
+  } catch(e) {
+    setStatus('❌ Câmera: ' + e.message);
+  }
+}
+
+async function snap() {
+  const video = document.getElementById('camVideo');
+  const cv = document.getElementById('camSnap');
+  cv.width = video.videoWidth;
+  cv.height = video.videoHeight;
+  cv.getContext('2d').drawImage(video, 0, 0);
+  setStatus('⏳ Enviando foto...');
+  cv.toBlob(async (blob) => {
+    const fd = new FormData();
+    fd.append('photo', blob, 'debug-capture.jpg');
+    try {
+      // Guardar lista atual para detectar sessão nova
+      const before = await fetch('/debug-sessions').then(r => r.json()).catch(() => []);
+      // Envia via HTTP (porta 3001) para evitar bloqueio de cert autoassinado
+      const upRes = await fetch('http://localhost:3001/upload', { method: 'POST', body: fd });
+      if (!upRes.ok) throw new Error(`Upload falhou: ${upRes.status}`);
+      setStatus('⏳ Detectando rosto (aguarde)...');
+      // Poll até nova sessão aparecer (máx 30s)
+      const deadline = Date.now() + 30000;
+      let found = false;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 800));
+        const after = await fetch('/debug-sessions').then(r => r.json()).catch(() => []);
+        const newSession = after.find(s => !before.includes(s));
+        if (newSession) {
+          await loadList();
+          // Selecionar a sessão nova
+          const sel = document.getElementById('dbgSelect');
+          for (const opt of sel.options) {
+            if (opt.value === `debug:${newSession}`) { sel.value = opt.value; break; }
           }
-          return { x: (jawline[i].x + hShift) * scale, y: (jawline[i].y + (box.height * jawPad) + sShaveY) * scale };
-      };
-
-      // Visualização da ÁREA MANTIDA (Suave)
-      ctx.save();
-      ctx.beginPath();
-      const startPt = getPt(0);
-      ctx.moveTo(startPt.x, startPt.y);
-      for (let i = 0; i < jawline.length - 1; i++) {
-          const pt = getPt(i);
-          const next = getPt(i + 1);
-          ctx.quadraticCurveTo(pt.x, pt.y, (pt.x + next.x)/2, (pt.y + next.y)/2);
-      }
-      const endPt = getPt(16);
-      ctx.lineTo(endPt.x, endPt.y);
-      ctx.lineTo(cv.width, endPt.y);
-      ctx.lineTo(cv.width, 0);
-      ctx.lineTo(0, 0);
-      ctx.lineTo(0, startPt.y);
-      ctx.closePath();
-      
-      ctx.clip();
-      ctx.drawImage(img, 0, 0, cv.width, cv.height);
-      ctx.restore();
-      
-      // Pontos do maxilar ajustados (visualização em Ciano para controle)
-      ctx.fillStyle = '#4af';
-      for (let i = 0; i < jawline.length; i++) {
-        const pt = getPt(i);
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Todos os 68 pontos originais (visualização em Amarelo para controle)
-      if (lastLandmarks.all) {
-        ctx.fillStyle = '#ff0';
-        for (let i = 0; i < lastLandmarks.all.length; i++) {
-          ctx.beginPath();
-          ctx.arc(lastLandmarks.all[i].x * scale, lastLandmarks.all[i].y * scale, 2, 0, Math.PI * 2);
-          ctx.fill();
+          await loadSelected();
+          found = true;
+          break;
         }
       }
-    }
-  }
-
-  function setStatus(msg) {
-    document.getElementById('status').textContent = msg;
-  }
-
-  async function process() {
-    if (!currentFile) return;
-    const btn = document.getElementById('btnProcess');
-    const topPad = document.getElementById('topPad').value;
-    const jawPad = document.getElementById('jawPad').value;
-    const earPad = document.getElementById('earPad').value;
-    const neckPad = document.getElementById('neckPad').value;
-    const blur = document.getElementById('blur').value;
-    
-    btn.disabled = true;
-    setStatus('⏳ Processando e removendo fundo...');
-
-    try {
-      const r = await fetch('/crop-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          file: currentFile,
-          topPad: parseFloat(topPad),
-          jawPad: parseFloat(jawPad),
-          earPad: parseFloat(earPad),
-          neckPad: parseFloat(neckPad),
-          blur: parseInt(blur)
-        })
-      });
-      if (!r.ok) throw new Error(await r.text());
-      const { url, landmarks } = await r.json();
-      
-      const res = document.getElementById('result');
-      res.src = url + '?t=' + Date.now();
-      res.style.display = 'block';
-      
-      if (landmarks) {
-        lastLandmarks = landmarks;
-        drawOverlay();
-      }
-      
-      setStatus('✅ Pronto! Rosto isolado e fundo removido.');
+      if (!found) setStatus('⚠️ Timeout — tente carregar manualmente');
     } catch(e) {
-      setStatus('❌ ' + e.message);
-    } finally {
-      btn.disabled = false;
+      setStatus('❌ Erro ao enviar: ' + e.message);
     }
-  }
+  }, 'image/jpeg', 0.92);
+}
 
-  loadList();
+loadList();
 </script>
 </body>
 </html>

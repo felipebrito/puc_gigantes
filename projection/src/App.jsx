@@ -92,7 +92,7 @@ function Visitor({ id, imageUrl, removeVisitor, moveConfig, spriteConfigRef }) {
 
 const PRESET_KEY = 'gigantes_preset_last';
 
-const CONFIG_VERSION = 6;
+const CONFIG_VERSION = 7;
 
 const DEFAULT_CONFIG = {
   _v: CONFIG_VERSION,
@@ -119,7 +119,7 @@ const DEFAULT_CONFIG = {
   warpRows: 4,
   warpSubdiv: 12,
   enableBgVideo: true,
-  bgVideoUrl: '/videos/v4/bg_opt.mp4',
+  bgVideoUrl: '/videos/v5/8_bg.mp4',
   bgVideoOpacity: 1.0,
   lumaMode: 0,
   showDino: false,
@@ -667,7 +667,7 @@ export default function App() {
             <Suspense fallback={null}>
               <VideoLayers
                 bgUrl={cfg.bgVideoUrl}
-                fgUrl="/videos/v4/fg_alpha.webm"
+                fgUrl="/videos/v5/8_FG_alpha.webm"
                 opacity={cfg.bgVideoOpacity}
               />
             </Suspense>
