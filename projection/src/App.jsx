@@ -205,6 +205,8 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
       proxy[key] = v;
       cfgRef.current = { ...cfgRef.current, [key]: v };
       setCfg(prev => ({ ...prev, [key]: v }));
+      // Salva imediatamente no localStorage (sem depender do ciclo React)
+      try { localStorage.setItem(PRESET_KEY, JSON.stringify(cfgRef.current)); } catch {}
     };
 
     const sprite = gui.addFolder('Personagem Sprite');
