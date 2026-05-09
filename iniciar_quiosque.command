@@ -35,7 +35,7 @@ echo "🌐 Abrindo Chrome em Modo Quiosque..."
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
   --kiosk \
   --app=http://localhost:5200 \
-  --user-data-dir="/tmp/chrome_kiosk_gigantes" \
+  --user-data-dir="$HOME/Library/Application Support/ChromeKioskGigantes" \
   --no-first-run \
   --no-default-browser-check \
   --autoplay-policy=no-user-gesture-required
