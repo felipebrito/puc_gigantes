@@ -484,6 +484,31 @@ app.delete('/uploads/:filename', (req, res) => {
 });
 
 // List all Visitors API
+// --- Projection Config Persistence ---
+const PROJ_CONFIG_FILE = path.join(__dirname, 'projection-config.json');
+
+app.get('/projection-config', (req, res) => {
+  try {
+    if (fs.existsSync(PROJ_CONFIG_FILE)) {
+      const data = fs.readFileSync(PROJ_CONFIG_FILE, 'utf8');
+      res.json(JSON.parse(data));
+    } else {
+      res.json(null);
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/projection-config', express.json({ limit: '1mb' }), (req, res) => {
+  try {
+    fs.writeFileSync(PROJ_CONFIG_FILE, JSON.stringify(req.body, null, 2), 'utf8');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/visitors', (req, res) => {
   console.log(`[API] Requested visitors list from: ${req.headers.origin || req.ip}`);
   fs.readdir(uploadDir, (err, files) => {

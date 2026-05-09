@@ -129,21 +129,36 @@ const DEFAULT_CONFIG = {
   warpOffsets: [],
 };
 
+const SERVER_CONFIG_URL = `http://${window.location.hostname}:3001/projection-config`;
+
+function sanitizeConfig(parsed) {
+  if (parsed.bgVideoUrl && (parsed.bgVideoUrl.includes('commondatastorage') || parsed.bgVideoUrl.includes('vjs.zencdn'))) {
+    parsed.bgVideoUrl = DEFAULT_CONFIG.bgVideoUrl;
+  }
+  return parsed;
+}
+
 function loadSavedConfig() {
   try {
     const raw = localStorage.getItem(PRESET_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Saneamento de URL: Se for a URL antiga que costuma quebrar, reseta para a nova estável
-      if (parsed.bgVideoUrl && (parsed.bgVideoUrl.includes('commondatastorage') || parsed.bgVideoUrl.includes('vjs.zencdn'))) {
-        parsed.bgVideoUrl = DEFAULT_CONFIG.bgVideoUrl;
-      }
-      // Discard saves from older versions
+      sanitizeConfig(parsed);
       if (parsed._v === CONFIG_VERSION) return { ...DEFAULT_CONFIG, ...parsed };
       console.log('[Gigantes] Preset desatualizado — usando padrões');
     }
   } catch { }
   return { ...DEFAULT_CONFIG };
+}
+
+async function saveConfigToServer(cfg) {
+  try {
+    await fetch(SERVER_CONFIG_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg),
+    });
+  } catch { }
 }
 
 function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
@@ -620,12 +635,25 @@ export default function App() {
   const sourceCanvasRef = useRef(null);
   const [cfg, setCfg] = useState(loadSavedConfig);
   const [showStats, setShowStats] = useState(false);
-  
+
   useEffect(() => { sourceCanvasRef.current = sourceCanvas; }, [sourceCanvas]);
 
-  // Auto-save on any change
+  // Load from server on mount (overrides localStorage)
+  useEffect(() => {
+    fetch(SERVER_CONFIG_URL)
+      .then(r => r.json())
+      .then(data => {
+        if (!data || data._v !== CONFIG_VERSION) return;
+        sanitizeConfig(data);
+        setCfg({ ...DEFAULT_CONFIG, ...data });
+      })
+      .catch(() => {});
+  }, []);
+
+  // Auto-save on any change — to both localStorage and server file
   useEffect(() => {
     try { localStorage.setItem(PRESET_KEY, JSON.stringify(cfg)); } catch { }
+    saveConfigToServer(cfg);
   }, [cfg]);
 
   const warp = useWarpState();
