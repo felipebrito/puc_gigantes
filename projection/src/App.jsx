@@ -203,7 +203,7 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
   // Build lil-gui panel once
   useEffect(() => {
     const gui = new GUI({ title: 'Configurações' });
-    gui.close(); // inicia retraído
+    gui.domElement.style.display = 'none'; // Inicia oculto — pressione M para abrir
     window.__gui = gui;
     const proxy = { ...cfgRef.current, editingWarp: !!warpRef.current?.state?.editing };
 

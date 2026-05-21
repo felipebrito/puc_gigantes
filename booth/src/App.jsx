@@ -5,278 +5,164 @@ import * as faceapi from 'face-api.js';
 import { GooeyLoader } from './GooeyLoader';
 import './BoothApp.css';
 
-// Server URL - Update this if running on a different machine
-// Server URL - Update this if running on a different machine
-// Usando a porta 3001 (HTTP) para evitar problemas de Certificado SSL em ambiente local
 const SERVER_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:3001' 
-  : `https://${window.location.hostname}:3000`; // Tablets remotos DEVEM usar HTTPS:3000
+  ? 'http://localhost:3001'
+  : `https://${window.location.hostname}:3000`;
+
+// Detecta modo pelo query param: /?calibrate
+const IS_CALIBRATE = window.location.search.includes('calibrate');
+
+// Lê configuração salva
+function loadCfg(key, fallback) {
+  const v = localStorage.getItem('booth-' + key);
+  if (v === null) return fallback;
+  if (typeof fallback === 'boolean') return v !== 'false';
+  return parseFloat(v);
+}
 
 function App() {
   const webcamRef = useRef(null);
-  const [imgSrc, setImgSrc] = useState(null);
+  const [imgSrc, setImgSrc]           = useState(null);
   const [countingDown, setCountingDown] = useState(false);
-  const [countdown, setCountdown] = useState(3);
-  const [flash, setFlash] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [countdown, setCountdown]     = useState(3);
+  const [flash, setFlash]             = useState(false);
+  const [uploading, setUploading]     = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
-  const [faceFeedback, setFaceFeedback] = useState("Carregando IA...");
+  const [faceFeedback, setFaceFeedback] = useState('Carregando IA...');
   const [isFaceValid, setIsFaceValid] = useState(false);
-  const [serverOnline, setServerOnline] = useState(true);
-  const [showSuccess, setShowSuccess] = useState(false); // NEW: Non-blocking success state
-  const [showSettings, setShowSettings] = useState(false);
-  const [zoom, setZoom] = useState(() => parseFloat(localStorage.getItem('booth-zoom')) || 1);
-  const [offsetX, setOffsetX] = useState(() => parseFloat(localStorage.getItem('booth-offsetX')) || 0);
-  const [offsetY, setOffsetY] = useState(() => parseFloat(localStorage.getItem('booth-offsetY')) || 0);
-  const [brightness, setBrightness] = useState(() => parseFloat(localStorage.getItem('booth-brightness')) || 1);
-  const [contrast, setContrast] = useState(() => parseFloat(localStorage.getItem('booth-contrast')) || 1);
-  const [saturate, setSaturate] = useState(() => parseFloat(localStorage.getItem('booth-saturate')) || 1);
-  const [isMirrored, setIsMirrored] = useState(() => localStorage.getItem('booth-mirrored') !== 'false');
+  const [showSuccess, setShowSuccess] = useState(false);
 
-  // Refs to prevent race conditions and immediate re-triggering
-  const isCapturingRef = useRef(false);
+  // Configurações de câmera (persistidas por tablet)
+  const [zoom,       setZoom]       = useState(() => loadCfg('zoom',       1));
+  const [offsetX,    setOffsetX]    = useState(() => loadCfg('offsetX',    0));
+  const [offsetY,    setOffsetY]    = useState(() => loadCfg('offsetY',    0));
+  const [brightness, setBrightness] = useState(() => loadCfg('brightness', 1));
+  const [contrast,   setContrast]   = useState(() => loadCfg('contrast',   1));
+  const [saturate,   setSaturate]   = useState(() => loadCfg('saturate',   1));
+  const [isMirrored, setIsMirrored] = useState(() => loadCfg('mirrored',   true));
+
+  const saveCfg = (key, val) => localStorage.setItem('booth-' + key, val);
+
+  const isCapturingRef  = useRef(false);
   const cooldownTimeRef = useRef(0);
   const isProcessingRef = useRef(false);
-  const uploadingRef = useRef(false);
-  const timerRef = useRef(null);
-  const longPressTimer = useRef(null); // Long-press to open hidden settings
+  const uploadingRef    = useRef(false);
+  const timerRef        = useRef(null);
 
-  // Check connection periodically to clear the warning bar automatically
+  // Persist settings on change
+  React.useEffect(() => { saveCfg('zoom',       zoom);       }, [zoom]);
+  React.useEffect(() => { saveCfg('offsetX',    offsetX);    }, [offsetX]);
+  React.useEffect(() => { saveCfg('offsetY',    offsetY);    }, [offsetY]);
+  React.useEffect(() => { saveCfg('brightness', brightness); }, [brightness]);
+  React.useEffect(() => { saveCfg('contrast',   contrast);   }, [contrast]);
+  React.useEffect(() => { saveCfg('saturate',   saturate);   }, [saturate]);
+  React.useEffect(() => { saveCfg('mirrored',   isMirrored); }, [isMirrored]);
+
+  // Load face API models
   React.useEffect(() => {
-    const checkConnection = () => {
-      fetch(`${SERVER_URL}/api/status`)
-        .then((r) => {
-          if (r.ok) setServerOnline(true);
-        })
-        .catch(() => setServerOnline(false));
-    };
-
-    checkConnection();
-    const interval = setInterval(checkConnection, 3000); // Tenta a cada 3s
-    return () => clearInterval(interval);
-  }, []);
-
-  // Persist settings
-  React.useEffect(() => {
-    localStorage.setItem('booth-zoom', zoom);
-    localStorage.setItem('booth-offsetX', offsetX);
-    localStorage.setItem('booth-offsetY', offsetY);
-    localStorage.setItem('booth-brightness', brightness);
-    localStorage.setItem('booth-contrast', contrast);
-    localStorage.setItem('booth-saturate', saturate);
-    localStorage.setItem('booth-mirrored', isMirrored);
-  }, [zoom, offsetX, offsetY, brightness, contrast, saturate, isMirrored]);
-
-  // Load Face API Models
-  React.useEffect(() => {
-    const loadModels = async () => {
+    (async () => {
       try {
-        console.log("Loading FaceAPI Models...");
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
           faceapi.nets.faceExpressionNet.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68Net.loadFromUri('/models')
+          faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
         ]);
-        console.log("FaceAPI Models Loaded Successfully");
         setLoadingModels(false);
-        setFaceFeedback("Posicione seu rosto");
+        setFaceFeedback('Posicione seu rosto');
       } catch (e) {
-        console.error("Error loading models", e);
-        setFaceFeedback("Erro IA: " + (e.message || String(e)));
+        setFaceFeedback('Erro IA: ' + (e.message || String(e)));
       }
-    };
-    loadModels();
+    })();
   }, []);
 
-  // Face Detection Loop
+  // Face detection loop
   React.useEffect(() => {
     if (loadingModels || countingDown || imgSrc) return;
-    console.log("[Effect] Restarting detection loop with:", { loadingModels, countingDown, imgSrc });
-
     const interval = setInterval(async () => {
-      // Diagnostic Log - UNCOMMENTED FOR DEBUGGING
-      console.log("[Loop] Tick. Refs:", {
-        capturing: isCapturingRef.current,
-        processing: isProcessingRef.current,
-        cooldownTime: cooldownTimeRef.current,
-        remaining: Math.max(0, cooldownTimeRef.current - Date.now()),
-        videoReady: webcamRef.current?.video?.readyState
-      });
-
-      // Check refs to bail out early if we are locked/cooling down OR processing a previous photo
       if (isCapturingRef.current || isProcessingRef.current || Date.now() < cooldownTimeRef.current) return;
+      const video = webcamRef.current?.video;
+      if (!video || video.readyState !== 4) return;
 
-      if (webcamRef.current && webcamRef.current.video && webcamRef.current.video.readyState === 4) {
-        const video = webcamRef.current.video;
+      let detection;
+      try {
+        const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 });
+        detection = await faceapi.detectSingleFace(video, opts).withFaceExpressions();
+      } catch { return; }
 
-        // Detect face
-        let detection;
-        try {
-          // Options: inputSize=224 for significantly lighter tablet execution, scoreThreshold=0.3 to be lenient
-          const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 });
+      if (!detection) { setFaceFeedback('Rosto não encontrado'); setIsFaceValid(false); return; }
 
-          // Try with expressions
-          detection = await faceapi.detectSingleFace(video, options).withFaceExpressions();
-        } catch (err) {
-          // ... (keep fallback) ...
-          return;
-        }
+      const box = detection.box || detection.detection?.box;
+      if (!box) return;
 
-        if (!detection) {
-          setFaceFeedback("Rosto não encontrado");
-          setIsFaceValid(false);
-          return;
-        }
+      const { x, width } = box;
+      const vw = video.videoWidth;
+      const centerX = x + width / 2;
+      const isCenteredX = Math.abs(centerX - vw / 2) < vw * 0.15;
+      const isCloseEnough = width > vw * 0.2;
 
-        const box = detection.box || (detection.detection && detection.detection.box);
-        if (!box) {
-          // ...
-          return;
-        }
-
-        const { x, y, width, height } = box;
-        const videoW = video.videoWidth;
-        const videoH = video.videoHeight;
-
-        const centerX = x + width / 2;
-        const isCenteredX = Math.abs(centerX - videoW / 2) < videoW * 0.15; // 15% tolerance
-        const isCloseEnough = width > videoW * 0.2;
-
-        if (!isCloseEnough) {
-          setFaceFeedback("Aproxime-se mais");
-          setIsFaceValid(false);
-        } else if (!isCenteredX) {
-          setFaceFeedback("Centralize o rosto");
-          setIsFaceValid(false);
-        } else {
-          setFaceFeedback("Perfeito! Sorria!");
-          setIsFaceValid(true);
-
-          // Smile Trigger
-          if (detection.expressions && detection.expressions.happy > 0.7) {
-            // Ensure we aren't already capturing or in cooldown
-            if (!isCapturingRef.current && Date.now() > cooldownTimeRef.current && !countingDown && !imgSrc) {
-              console.log("[DEBUG] Smile detected! Triggering capture.");
-              setFaceFeedback("Sorriso detectado! 📸");
-              startCapture();
-            } else {
-              // Optional sparse logging to avoid spam
-              if (Math.random() < 0.05) {
-                console.log("[DEBUG] Smile ignored. Locked/Cooling:", {
-                  capturing: isCapturingRef.current,
-                  cooldown: cooldownRef.current,
-                  countingDown,
-                  hasImg: !!imgSrc
-                });
-              }
-            }
-          }
+      if (!isCloseEnough) {
+        setFaceFeedback('Aproxime-se mais'); setIsFaceValid(false);
+      } else if (!isCenteredX) {
+        setFaceFeedback('Centralize o rosto'); setIsFaceValid(false);
+      } else {
+        setFaceFeedback('Perfeito! Sorria! 😄'); setIsFaceValid(true);
+        if (detection.expressions?.happy > 0.7 && !isCapturingRef.current && Date.now() > cooldownTimeRef.current) {
+          startCapture();
         }
       }
-    }, 1000); // Relax checks to every 1000ms to save CPU & Battery on Tablets
-
+    }, 1000);
     return () => clearInterval(interval);
   }, [loadingModels, countingDown, imgSrc]);
 
-  // Capture functionality
-  // Capture functionality
   const startCapture = () => {
-    if (isCapturingRef.current || isProcessingRef.current || uploadingRef.current) {
-      console.warn("[DEBUG] startCapture blocked: Busy (Capturing/Processing/Uploading)");
-      return;
-    }
-    console.log("[DEBUG] startCapture initiated");
+    if (isCapturingRef.current || isProcessingRef.current || uploadingRef.current) return;
     isCapturingRef.current = true;
-
-    // Safety: Clear any existing timer
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     setCountingDown(true);
     setCountdown(3);
-
     let localCount = 3;
     timerRef.current = setInterval(() => {
       localCount -= 1;
-      console.log("[DEBUG] Countdown tick:", localCount);
       setCountdown(localCount);
-
       if (localCount <= 0) {
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
+        clearInterval(timerRef.current); timerRef.current = null;
         triggerCapture();
       }
     }, 1000);
   };
 
   const triggerCapture = useCallback(() => {
-    console.log("[DEBUG] triggerCapture executed");
-
-    // Clear timer if it's still running
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
-    // 1. Get raw screenshot
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     const imageSrc = webcamRef.current.getScreenshot();
-
-    // Flash effect
-    setFlash(true);
-    setTimeout(() => setFlash(false), 200);
-
-    // Show raw image immediately
+    setFlash(true); setTimeout(() => setFlash(false), 200);
     setImgSrc(imageSrc);
     setCountingDown(false);
-
-    // Release capture lock
-    console.log("[DEBUG] Capture lock released");
     isCapturingRef.current = false;
   }, [webcamRef]);
 
   const retake = () => {
-    console.log("[DEBUG] Retake clicked - resetting state");
-
-    // Clear any pending countdown
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     setCountingDown(false);
-
     setImgSrc(null);
-    isCapturingRef.current = false; // FORCE RESET
-    console.log("[DEBUG] isCapturingRef set to false");
-    // Cooldown prevents immediate re-trigger by smile
-    const COOLDOWN_MS = 2000;
-    cooldownTimeRef.current = Date.now() + COOLDOWN_MS;
-    console.log(`[DEBUG] Cooldown applied until: ${cooldownTimeRef.current}`);
+    isCapturingRef.current = false;
+    cooldownTimeRef.current = Date.now() + 2000;
   };
 
-  // Crop preciso: usa jawPoints[8] (ponta exata do queixo) em vez de max(jawPoints)
-  // que pode pegar pontos laterais da mandíbula mais baixos que o queixo real.
-  // Detecta o rosto no video (não na screenshot) para evitar problemas de EXIF/rotação
   const detectFaceBox = async () => {
     const video = webcamRef.current?.video;
     if (!video) return null;
-    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
-    const det = await faceapi.detectSingleFace(video, options).withFaceLandmarks();
+    const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
+    const det = await faceapi.detectSingleFace(video, opts).withFaceLandmarks();
     if (!det) return null;
     const { x, y, width, height } = det.detection.box;
-    const jawPoints = det.landmarks.getJawOutline();
-    const chinY = jawPoints[8].y;
+    const chinY = det.landmarks.getJawOutline()[8].y;
     const vw = video.videoWidth, vh = video.videoHeight;
-    // Normaliza para 0-1 relativo ao video
     return {
       left:   Math.max(0, (x - width  * 0.25) / vw),
-      top:    Math.max(0, (y - height * 0.6) / vh),
+      top:    Math.max(0, (y - height * 0.6)  / vh),
       right:  Math.min(1, (x + width  * 1.25) / vw),
       bottom: Math.min(1, (chinY + height * 0.5) / vh),
-      vw, vh
+      vw, vh,
     };
   };
 
@@ -288,16 +174,12 @@ function App() {
     cooldownTimeRef.current = Date.now() + 2000;
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
-
     (async () => {
       isProcessingRef.current = true;
       uploadingRef.current = true;
       setUploading(true);
       try {
-        console.log('[Upload] iniciando, detectando rosto...');
         const faceBox = await detectFaceBox();
-        console.log('[Upload] faceBox:', faceBox);
-        console.log('[Upload] convertendo imagem...');
         const byteString = atob(raw.split(',')[1]);
         const ab = new ArrayBuffer(byteString.length);
         const ia = new Uint8Array(ab);
@@ -306,17 +188,8 @@ function App() {
         const formData = new FormData();
         formData.append('photo', new File([blob], 'visitor.jpg', { type: 'image/jpeg' }));
         if (faceBox) formData.append('faceBox', JSON.stringify(faceBox));
-        
-        // Adicionando os ajustes manuais de zoom e crop + filtros
-        formData.append('cameraSettings', JSON.stringify({ 
-          zoom, offsetX, offsetY, 
-          brightness, contrast, saturate, isMirrored 
-        }));
-        
-        console.log('[Upload] enviando para servidor...');
-        await axios.post(`${SERVER_URL}/upload`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        formData.append('cameraSettings', JSON.stringify({ zoom, offsetX, offsetY, brightness, contrast, saturate, isMirrored }));
+        await axios.post(`${SERVER_URL}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       } catch (e) {
         console.error('[Upload] ❌', e);
       } finally {
@@ -329,264 +202,146 @@ function App() {
 
   const goFullscreen = () => {
     if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch((err) => {
-        console.log("Error attempting to enable full-screen mode:", err.message);
-      });
+      document.documentElement.requestFullscreen().catch(() => {});
     }
   };
 
-  return (
-    <div className="booth-container" onClick={goFullscreen}>
-      {/* Success Overlay */}
-      {showSuccess && (
-        <div style={{
-          position: 'absolute',
-          top: '20%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          background: 'rgba(0, 255, 0, 0.8)',
-          color: 'white',
-          padding: '20px 40px',
-          borderRadius: '10px',
-          fontSize: '2rem',
-          fontWeight: 'bold',
-          zIndex: 9999,
-          pointerEvents: 'none', // click-through
-          animation: 'fadeInOut 3s ease-in-out'
-        }}>
-          ✅ Foto Enviada!
-        </div>
-      )}
+  const cameraTransform = `${isMirrored ? 'scaleX(-1)' : 'scaleX(1)'} scale(${zoom}) translate(${offsetX}%, ${offsetY}%)`;
+  const cameraFilter    = `brightness(${brightness}) contrast(${contrast}) saturate(${saturate})`;
 
-      <div className="camera-wrapper" style={{ display: uploading ? 'none' : 'block' }}>
-        {/* Always keep Webcam mounted to avoid re-init delays */}
-        <Webcam
-          audio={false}
-          ref={webcamRef}
-          screenshotFormat="image/jpeg"
-          className="webcam"
-          style={{
-            visibility: imgSrc ? 'hidden' : 'visible',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            transform: `${isMirrored ? 'scaleX(-1)' : 'scaleX(1)'} scale(${zoom}) translate(${offsetX}%, ${offsetY}%)`,
-            filter: `brightness(${brightness}) contrast(${contrast}) saturate(${saturate})`
-          }}
-          videoConstraints={{
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: "user"
-          }}
-        />
-
-        {imgSrc && (
-          <img
-            src={imgSrc}
-            alt="captured"
+  // ─── Calibration mode ──────────────────────────────────────────────────────
+  if (IS_CALIBRATE) {
+    return (
+      <div className="calibrate-container">
+        {/* Left: live camera preview */}
+        <div className="calibrate-camera">
+          <Webcam
+            audio={false}
+            ref={webcamRef}
+            screenshotFormat="image/jpeg"
             className="webcam"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              zIndex: 10,
-              transform: `${isMirrored ? 'scaleX(-1)' : 'scaleX(1)'} scale(${zoom}) translate(${offsetX}%, ${offsetY}%)`,
-              filter: `brightness(${brightness}) contrast(${contrast}) saturate(${saturate})`
-            }}
+            style={{ transform: cameraTransform, filter: cameraFilter }}
+            videoConstraints={{ width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }}
           />
-        )}
-
-        {/* Face Feedback Overlay */}
-        {!imgSrc && !countingDown && (
-          <div className="overlay-instruction" style={{
-            color: isFaceValid ? '#afff4d' : 'white',
-          }}>
-            {faceFeedback}
+          <div className="face-guide" />
+          <div className="overlay-instruction" style={{ color: isFaceValid ? '#afff4d' : 'white' }}>
+            {loadingModels ? 'Carregando IA...' : faceFeedback}
           </div>
-        )}
+        </div>
 
-        {countingDown && <div className="countdown">{countdown > 0 ? countdown : ''}</div>}
+        {/* Right: settings panel */}
+        <div className="calibrate-panel">
+          <h2>⚙️ Calibragem de Câmera</h2>
+          <p className="calibrate-hint">Ajuste o enquadramento ao vivo. Configurações salvas automaticamente.</p>
+
+          <div className="cal-section">ENQUADRAMENTO</div>
+          <Slider label="Zoom" value={zoom}       min={1}   max={4}   step={0.05} format={v => v.toFixed(2) + '×'} onChange={v => setZoom(v)} />
+          <Slider label="Horizontal" value={offsetX}  min={-50} max={50}  step={1}    format={v => v + '%'}           onChange={v => setOffsetX(v)} />
+          <Slider label="Vertical"   value={offsetY}  min={-50} max={50}  step={1}    format={v => v + '%'}           onChange={v => setOffsetY(v)} />
+
+          <div className="cal-section">IMAGEM</div>
+          <Slider label="Brilho"     value={brightness} min={0.5} max={2} step={0.05} format={v => v.toFixed(2)} onChange={v => setBrightness(v)} />
+          <Slider label="Contraste"  value={contrast}   min={0.5} max={2} step={0.05} format={v => v.toFixed(2)} onChange={v => setContrast(v)} />
+          <Slider label="Saturação"  value={saturate}   min={0}   max={2} step={0.05} format={v => v.toFixed(2)} onChange={v => setSaturate(v)} />
+
+          <label className="cal-flip">
+            <input type="checkbox" checked={isMirrored} onChange={e => setIsMirrored(e.target.checked)} />
+            <span>Espelhar câmera (Flip)</span>
+          </label>
+
+          <div className="cal-actions">
+            <button className="cal-btn-reset" onClick={() => {
+              setZoom(1); setOffsetX(0); setOffsetY(0);
+              setBrightness(1); setContrast(1); setSaturate(1); setIsMirrored(true);
+            }}>↩ Reset</button>
+            <a className="cal-btn-go" href="/">✓ Ir para Kiosk</a>
+          </div>
+        </div>
       </div>
+    );
+  }
 
-      {uploading && (
-        <div className="processing-overlay" style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100%', // Match camera height
-          width: '100%'
-        }}>
-          <GooeyLoader
-            primaryColor="var(--primary)"
-            secondaryColor="#ffffff"
-          />
-          <h2 style={{ marginTop: '2rem', color: 'var(--light)', fontSize: '1.2rem', fontWeight: '300' }}>
-            Processando sua foto mágica...
-          </h2>
-          <p style={{ color: '#888', fontSize: '0.9rem' }}>Aguarde um momento</p>
-        </div>
-      )}
+  // ─── Kiosk mode ─────────────────────────────────────────────────────────────
+  return (
+    <div className="kiosk-container" onClick={goFullscreen}>
 
-      {!uploading && (
-        <div className="controls">
-          {uploading ? (
-            <GooeyLoader
-              primaryColor="var(--primary)"
-              secondaryColor="#ffffff"
-            />
-          ) : (
-            <>
-              {!imgSrc && !countingDown && (
-                <button
-                  className="btn"
-                  onClick={startCapture}
-                  disabled={!isFaceValid && !loadingModels}
-                  style={{
-                    opacity: isFaceValid ? 1 : 0.5,
-                    cursor: isFaceValid ? 'pointer' : 'not-allowed'
-                  }}
-                >
-                  Tirar Foto
-                </button>
-              )}
-
-              {imgSrc && (
-                <>
-                  <button className="btn btn-secondary" onClick={retake}>
-                    Tentar De Novo
-                  </button>
-                  <button className="btn" onClick={sendPhoto}>
-                    Enviar
-                  </button>
-                </>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Settings: Invisible long-press zone (3s) no canto superior direito — oculto no kiosk */}
-      <div
+      {/* Camera — fullscreen */}
+      <Webcam
+        audio={false}
+        ref={webcamRef}
+        screenshotFormat="image/jpeg"
+        className="kiosk-camera"
         style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          width: '80px',
-          height: '80px',
-          zIndex: 1000,
-          cursor: 'default',
-          WebkitUserSelect: 'none',
-          userSelect: 'none',
+          visibility: imgSrc ? 'hidden' : 'visible',
+          transform: cameraTransform,
+          filter: cameraFilter,
         }}
-        onPointerDown={() => {
-          longPressTimer.current = setTimeout(() => setShowSettings(true), 3000);
-        }}
-        onPointerUp={() => clearTimeout(longPressTimer.current)}
-        onPointerLeave={() => clearTimeout(longPressTimer.current)}
-        onPointerCancel={() => clearTimeout(longPressTimer.current)}
+        videoConstraints={{ width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }}
       />
 
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="settings-panel">
-          <h3>Ajustes de Câmera</h3>
-          <div className="setting-item">
-            <label>Zoom: {zoom.toFixed(2)}x</label>
-            <input 
-              type="range" 
-              min="1" 
-              max="4" 
-              step="0.05" 
-              value={zoom} 
-              onChange={(e) => setZoom(parseFloat(e.target.value))} 
-            />
-          </div>
-          <div className="setting-item">
-            <label>Horizontal: {offsetX}%</label>
-            <input 
-              type="range" 
-              min="-50" 
-              max="50" 
-              step="1" 
-              value={offsetX} 
-              onChange={(e) => setOffsetX(parseFloat(e.target.value))} 
-            />
-          </div>
-          <div className="setting-item">
-            <label>Vertical: {offsetY}%</label>
-            <input 
-              type="range" 
-              min="-50" 
-              max="50" 
-              step="1" 
-              value={offsetY} 
-              onChange={(e) => setOffsetY(parseFloat(e.target.value))} 
-            />
-          </div>
+      {/* Captured photo preview */}
+      {imgSrc && (
+        <img
+          src={imgSrc}
+          alt="captured"
+          className="kiosk-camera"
+          style={{ position: 'absolute', top: 0, left: 0, zIndex: 5, transform: cameraTransform, filter: cameraFilter }}
+        />
+      )}
 
-          <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '0.5rem 0' }} />
-          
-          <div className="setting-item">
-            <label>Brilho: {brightness.toFixed(2)}</label>
-            <input 
-              type="range" 
-              min="0.5" 
-              max="2" 
-              step="0.05" 
-              value={brightness} 
-              onChange={(e) => setBrightness(parseFloat(e.target.value))} 
-            />
-          </div>
-          <div className="setting-item">
-            <label>Contraste: {contrast.toFixed(2)}</label>
-            <input 
-              type="range" 
-              min="0.5" 
-              max="2" 
-              step="0.05" 
-              value={contrast} 
-              onChange={(e) => setContrast(parseFloat(e.target.value))} 
-            />
-          </div>
-          <div className="setting-item">
-            <label>Saturação: {saturate.toFixed(2)}</label>
-            <input 
-              type="range" 
-              min="0" 
-              max="2" 
-              step="0.05" 
-              value={saturate} 
-              onChange={(e) => setSaturate(parseFloat(e.target.value))} 
-            />
-          </div>
-          <div className="setting-item checkbox">
-            <label>
-              <input 
-                type="checkbox" 
-                checked={isMirrored} 
-                onChange={(e) => setIsMirrored(e.target.checked)} 
-              />
-              Espelhar Câmera (Flip)
-            </label>
-          </div>
+      {/* Vignette blur outside oval */}
+      {!imgSrc && !countingDown && <div className="kiosk-vignette" />}
 
-          <div className="settings-actions">
-            <button className="btn-small" onClick={() => {
-              setZoom(1);
-              setOffsetX(0);
-              setOffsetY(0);
-              setBrightness(1);
-              setContrast(1);
-              setSaturate(1);
-              setIsMirrored(true);
-            }}>Reset</button>
-            <button onClick={() => setShowSettings(false)} className="btn-small btn-close">Fechar</button>
-          </div>
+      {/* Face guide oval */}
+      {!imgSrc && !countingDown && <div className={`face-guide${isFaceValid ? ' valid' : ''}`} />}
+
+      {/* Feedback text */}
+      {!imgSrc && !countingDown && (
+        <div className="kiosk-feedback" style={{ color: isFaceValid ? '#afff4d' : 'rgba(255,255,255,0.9)' }}>
+          {loadingModels ? '⏳ Carregando...' : faceFeedback}
         </div>
       )}
 
+      {/* Countdown */}
+      {countingDown && <div className="kiosk-countdown">{countdown > 0 ? countdown : ''}</div>}
+
+      {/* Photo review buttons */}
+      {imgSrc && !uploading && (
+        <div className="kiosk-review">
+          <button className="kiosk-btn secondary" onClick={retake}>🔄 Tentar de Novo</button>
+          <button className="kiosk-btn primary"   onClick={sendPhoto}>✉️ Enviar</button>
+        </div>
+      )}
+
+      {/* Upload spinner */}
+      {uploading && (
+        <div className="kiosk-uploading">
+          <GooeyLoader primaryColor="#0091ff" secondaryColor="#ffffff" />
+          <p>Processando sua foto...</p>
+        </div>
+      )}
+
+      {/* Success toast */}
+      {showSuccess && <div className="kiosk-toast">✅ Foto enviada!</div>}
+
+      {/* Flash */}
       <div className={`flash ${flash ? 'active' : ''}`} />
+    </div>
+  );
+}
+
+// Slider helper
+function Slider({ label, value, min, max, step, format, onChange }) {
+  return (
+    <div className="cal-slider">
+      <div className="cal-slider-header">
+        <span>{label}</span>
+        <span className="cal-slider-value">{format(value)}</span>
+      </div>
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+      />
     </div>
   );
 }
