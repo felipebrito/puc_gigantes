@@ -119,7 +119,7 @@ const DEFAULT_CONFIG = {
   warpRows: 4,
   warpSubdiv: 12,
   enableBgVideo: true,
-  bgVideoUrl: '/videos/v5/8_bg.mp4',
+  bgVideoUrl: '/videos/v5/8_bg_v16.mp4',
   bgVideoOpacity: 1.0,
   lumaMode: 0,
   showDino: false,

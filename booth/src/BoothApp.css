@@ -20,18 +20,18 @@ body {
 
 .booth-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row; /* Horizontal layout */
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   width: 100vw;
   height: 100vh;
   margin: 0;
-  padding: 4vh 0;
-  /* Vertical padding */
+  padding: 0 4vw;
   box-sizing: border-box;
   text-align: center;
-  background: radial-gradient(circle at center, #2c2c2c 0%, #ffffff 100%);
+  background: radial-gradient(circle at center, #2c2c2c 0%, #111 100%);
   overflow: hidden;
+  gap: 2rem;
 }
 
 /* Remove unused title style */
@@ -40,9 +40,9 @@ body {
 }
 
 .camera-wrapper {
-  flex-grow: 1;
-  /* Take all available space */
-  width: 90vw;
+  position: relative;
+  width: 65vw;
+  height: 80vh;
   /* Removed fixed height to let flex-grow: 1 handle it */
   border-radius: 40px;
   border: 4px solid var(--primary);
@@ -116,7 +116,10 @@ body {
 
 .controls {
   display: flex;
-  gap: 1rem;
+  flex-direction: column; /* Vertical controls on the side */
+  gap: 2rem;
+  width: 25vw;
+  align-items: center;
 }
 
 .btn {
@@ -173,4 +176,109 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 10;
+}
+
+/* Settings Panel */
+.settings-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(26, 26, 26, 0.95);
+  backdrop-filter: blur(15px);
+  padding: 1.5rem 2rem;
+  border-radius: 24px;
+  color: white;
+  z-index: 2000;
+  width: 380px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+  border: 1px solid rgba(255,255,255,0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.setting-item.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.setting-item.checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 1;
+}
+
+.setting-item.checkbox input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.settings-panel h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  text-align: center;
+  color: var(--primary);
+}
+
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.setting-item label {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.setting-item input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.settings-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.btn-small {
+  padding: 0.6rem 1.2rem;
+  font-size: 1rem;
+  border-radius: 10px;
+  border: none;
+  background: #444;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-small:hover {
+  background: #666;
+}
+
+.btn-close {
+  background: var(--primary);
+}
+
+.btn-close:hover {
+  background: #0076d1;
+}
+
+/* Success Overlay Animation */
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translate(-50%, -60%); }
+  10% { opacity: 1; transform: translate(-50%, -50%); }
+  90% { opacity: 1; transform: translate(-50%, -50%); }
+  100% { opacity: 0; transform: translate(-50%, -40%); }
 }

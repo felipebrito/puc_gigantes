@@ -24,13 +24,22 @@ function App() {
   const [isFaceValid, setIsFaceValid] = useState(false);
   const [serverOnline, setServerOnline] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false); // NEW: Non-blocking success state
+  const [showSettings, setShowSettings] = useState(false);
+  const [zoom, setZoom] = useState(() => parseFloat(localStorage.getItem('booth-zoom')) || 1);
+  const [offsetX, setOffsetX] = useState(() => parseFloat(localStorage.getItem('booth-offsetX')) || 0);
+  const [offsetY, setOffsetY] = useState(() => parseFloat(localStorage.getItem('booth-offsetY')) || 0);
+  const [brightness, setBrightness] = useState(() => parseFloat(localStorage.getItem('booth-brightness')) || 1);
+  const [contrast, setContrast] = useState(() => parseFloat(localStorage.getItem('booth-contrast')) || 1);
+  const [saturate, setSaturate] = useState(() => parseFloat(localStorage.getItem('booth-saturate')) || 1);
+  const [isMirrored, setIsMirrored] = useState(() => localStorage.getItem('booth-mirrored') !== 'false');
 
   // Refs to prevent race conditions and immediate re-triggering
   const isCapturingRef = useRef(false);
-  const cooldownTimeRef = useRef(0); // Timestamp when cooldown expires
-  const isProcessingRef = useRef(false); // Track if we are crunching numbers
-  const uploadingRef = useRef(false); // Mirror of uploading state — avoids stale closure in setInterval
-  const timerRef = useRef(null); // Track the active countdown interval
+  const cooldownTimeRef = useRef(0);
+  const isProcessingRef = useRef(false);
+  const uploadingRef = useRef(false);
+  const timerRef = useRef(null);
+  const longPressTimer = useRef(null); // Long-press to open hidden settings
 
   // Check connection periodically to clear the warning bar automatically
   React.useEffect(() => {
@@ -46,6 +55,17 @@ function App() {
     const interval = setInterval(checkConnection, 3000); // Tenta a cada 3s
     return () => clearInterval(interval);
   }, []);
+
+  // Persist settings
+  React.useEffect(() => {
+    localStorage.setItem('booth-zoom', zoom);
+    localStorage.setItem('booth-offsetX', offsetX);
+    localStorage.setItem('booth-offsetY', offsetY);
+    localStorage.setItem('booth-brightness', brightness);
+    localStorage.setItem('booth-contrast', contrast);
+    localStorage.setItem('booth-saturate', saturate);
+    localStorage.setItem('booth-mirrored', isMirrored);
+  }, [zoom, offsetX, offsetY, brightness, contrast, saturate, isMirrored]);
 
   // Load Face API Models
   React.useEffect(() => {
@@ -286,6 +306,13 @@ function App() {
         const formData = new FormData();
         formData.append('photo', new File([blob], 'visitor.jpg', { type: 'image/jpeg' }));
         if (faceBox) formData.append('faceBox', JSON.stringify(faceBox));
+        
+        // Adicionando os ajustes manuais de zoom e crop + filtros
+        formData.append('cameraSettings', JSON.stringify({ 
+          zoom, offsetX, offsetY, 
+          brightness, contrast, saturate, isMirrored 
+        }));
+        
         console.log('[Upload] enviando para servidor...');
         await axios.post(`${SERVER_URL}/upload`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
@@ -337,13 +364,14 @@ function App() {
           audio={false}
           ref={webcamRef}
           screenshotFormat="image/jpeg"
-          mirrored={true}
           className="webcam"
           style={{
             visibility: imgSrc ? 'hidden' : 'visible',
             position: 'absolute',
             top: 0,
-            left: 0
+            left: 0,
+            transform: `${isMirrored ? 'scaleX(-1)' : 'scaleX(1)'} scale(${zoom}) translate(${offsetX}%, ${offsetY}%)`,
+            filter: `brightness(${brightness}) contrast(${contrast}) saturate(${saturate})`
           }}
           videoConstraints={{
             width: { ideal: 1280 },
@@ -362,7 +390,8 @@ function App() {
               top: 0,
               left: 0,
               zIndex: 10,
-              transform: 'scaleX(-1)' // Mirroring the frozen photo
+              transform: `${isMirrored ? 'scaleX(-1)' : 'scaleX(1)'} scale(${zoom}) translate(${offsetX}%, ${offsetY}%)`,
+              filter: `brightness(${brightness}) contrast(${contrast}) saturate(${saturate})`
             }}
           />
         )}
@@ -434,6 +463,126 @@ function App() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Settings: Invisible long-press zone (3s) no canto superior direito — oculto no kiosk */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: '80px',
+          height: '80px',
+          zIndex: 1000,
+          cursor: 'default',
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+        }}
+        onPointerDown={() => {
+          longPressTimer.current = setTimeout(() => setShowSettings(true), 3000);
+        }}
+        onPointerUp={() => clearTimeout(longPressTimer.current)}
+        onPointerLeave={() => clearTimeout(longPressTimer.current)}
+        onPointerCancel={() => clearTimeout(longPressTimer.current)}
+      />
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="settings-panel">
+          <h3>Ajustes de Câmera</h3>
+          <div className="setting-item">
+            <label>Zoom: {zoom.toFixed(2)}x</label>
+            <input 
+              type="range" 
+              min="1" 
+              max="4" 
+              step="0.05" 
+              value={zoom} 
+              onChange={(e) => setZoom(parseFloat(e.target.value))} 
+            />
+          </div>
+          <div className="setting-item">
+            <label>Horizontal: {offsetX}%</label>
+            <input 
+              type="range" 
+              min="-50" 
+              max="50" 
+              step="1" 
+              value={offsetX} 
+              onChange={(e) => setOffsetX(parseFloat(e.target.value))} 
+            />
+          </div>
+          <div className="setting-item">
+            <label>Vertical: {offsetY}%</label>
+            <input 
+              type="range" 
+              min="-50" 
+              max="50" 
+              step="1" 
+              value={offsetY} 
+              onChange={(e) => setOffsetY(parseFloat(e.target.value))} 
+            />
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '0.5rem 0' }} />
+          
+          <div className="setting-item">
+            <label>Brilho: {brightness.toFixed(2)}</label>
+            <input 
+              type="range" 
+              min="0.5" 
+              max="2" 
+              step="0.05" 
+              value={brightness} 
+              onChange={(e) => setBrightness(parseFloat(e.target.value))} 
+            />
+          </div>
+          <div className="setting-item">
+            <label>Contraste: {contrast.toFixed(2)}</label>
+            <input 
+              type="range" 
+              min="0.5" 
+              max="2" 
+              step="0.05" 
+              value={contrast} 
+              onChange={(e) => setContrast(parseFloat(e.target.value))} 
+            />
+          </div>
+          <div className="setting-item">
+            <label>Saturação: {saturate.toFixed(2)}</label>
+            <input 
+              type="range" 
+              min="0" 
+              max="2" 
+              step="0.05" 
+              value={saturate} 
+              onChange={(e) => setSaturate(parseFloat(e.target.value))} 
+            />
+          </div>
+          <div className="setting-item checkbox">
+            <label>
+              <input 
+                type="checkbox" 
+                checked={isMirrored} 
+                onChange={(e) => setIsMirrored(e.target.checked)} 
+              />
+              Espelhar Câmera (Flip)
+            </label>
+          </div>
+
+          <div className="settings-actions">
+            <button className="btn-small" onClick={() => {
+              setZoom(1);
+              setOffsetX(0);
+              setOffsetY(0);
+              setBrightness(1);
+              setContrast(1);
+              setSaturate(1);
+              setIsMirrored(true);
+            }}>Reset</button>
+            <button onClick={() => setShowSettings(false)} className="btn-small btn-close">Fechar</button>
+          </div>
         </div>
       )}
 

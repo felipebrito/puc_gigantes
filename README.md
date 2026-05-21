@@ -76,6 +76,21 @@ No Android Studio, gerar APK e rodar no tablet.
 
 ## 📋 Changelog
 
+### 2026-05-20
+
+**Booth — Controles de Câmera (Zoom, Crop, Filtros)**
+- Adicionados controles de **Zoom** (1×–4×), **Offset Horizontal/Vertical** e **Espelhamento (Flip)** para compensar lentes wide-angle
+- Filtros de imagem em tempo real: **Brilho**, **Contraste**, **Saturação** (aplicados via CSS `filter` no preview e na foto capturada)
+- Interface reorganizada para **modo paisagem (horizontal)** — câmera à esquerda, controles à direita
+- Painel de configurações oculto no modo kiosk: acesso via **toque longo (3s) no canto superior direito**
+- Todas as configurações **persistidas por tablet** via `localStorage` (zoom, offsets, filtros, flip sobrevivem a reloads e reboot)
+- `cameraSettings` incluído no payload enviado ao servidor para processamento consistente
+
+**Projection — Atualização de Vídeo BG**
+- Substituído vídeo de fundo para **Ambiente 8 v16**: convertido com `ffmpeg` H.264 High CRF 23 `faststart` (712 MB → 43 MB)
+- `DEFAULT_CONFIG.bgVideoUrl` atualizado para `/videos/v5/8_bg_v16.mp4`
+- `.gitignore` atualizado para excluir arquivos de vídeo de produção (`.mp4`, `.webm` em `projection/public/videos/`)
+
 ### 2026-04-14
 - Atualiza cena para vídeos **v4** (BG 677MB→52MB, FG+LUMA 524MB→9.3MB WebM alpha)
 
