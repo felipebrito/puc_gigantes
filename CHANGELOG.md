@@ -9,6 +9,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ### Adicionado
 - **Novos vídeos de fundo v17** — Fundo H264 otimizado e composição Cards com alpha Luma (WEBM) adicionados e configurados na projeção.
+- **Booth: Configuração de Rede** — Adicionado campo "Backend URL" na tela de calibração (`/?calibrate`) para resolver problemas de CORS/SSL em tablets clientes, permitindo forçar o envio de fotos pela porta HTTP local (`3001`).
 
 ### Alterado
 - **Booth: Captura instantânea** — O tempo de espera de 3 segundos foi removido. A foto agora é tirada imediatamente quando o sorriso é detectado.

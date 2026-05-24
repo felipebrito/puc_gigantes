@@ -5,10 +5,6 @@ import * as faceapi from 'face-api.js';
 import { GooeyLoader } from './GooeyLoader';
 import './BoothApp.css';
 
-const SERVER_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:3001'
-  : `https://${window.location.hostname}:3000`;
-
 // Detecta modo pelo query param: /?calibrate
 const IS_CALIBRATE = window.location.search.includes('calibrate');
 
@@ -18,6 +14,11 @@ function loadCfg(key, fallback) {
   if (v === null) return fallback;
   if (typeof fallback === 'boolean') return v !== 'false';
   return parseFloat(v);
+}
+
+function loadStringCfg(key, fallback) {
+  const v = localStorage.getItem('booth-' + key);
+  return v !== null ? v : fallback;
 }
 
 function App() {
@@ -38,6 +39,11 @@ function App() {
   const [contrast,   setContrast]   = useState(() => loadCfg('contrast',   1));
   const [saturate,   setSaturate]   = useState(() => loadCfg('saturate',   1));
   const [isMirrored, setIsMirrored] = useState(() => loadCfg('mirrored',   true));
+  const [backendUrl, setBackendUrl] = useState(() => loadStringCfg('backendUrl', 
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:3001'
+      : `https://${window.location.hostname}:3000`
+  ));
 
   const saveCfg = (key, val) => localStorage.setItem('booth-' + key, val);
 
@@ -56,6 +62,7 @@ function App() {
   React.useEffect(() => { saveCfg('contrast',   contrast);   }, [contrast]);
   React.useEffect(() => { saveCfg('saturate',   saturate);   }, [saturate]);
   React.useEffect(() => { saveCfg('mirrored',   isMirrored); }, [isMirrored]);
+  React.useEffect(() => { saveCfg('backendUrl', backendUrl); }, [backendUrl]);
 
   // Load face API models
   React.useEffect(() => {
@@ -187,7 +194,7 @@ function App() {
         formData.append('photo', new File([blob], 'visitor.jpg', { type: 'image/jpeg' }));
         if (faceBox) formData.append('faceBox', JSON.stringify(faceBox));
         formData.append('cameraSettings', JSON.stringify({ zoom, offsetX, offsetY, brightness, contrast, saturate, isMirrored }));
-        await axios.post(`${SERVER_URL}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        await axios.post(`${backendUrl}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       } catch (e) {
         console.error('[Upload] ❌', e);
       } finally {
@@ -246,6 +253,17 @@ function App() {
             <input type="checkbox" checked={isMirrored} onChange={e => setIsMirrored(e.target.checked)} />
             <span>Espelhar câmera (Flip)</span>
           </label>
+
+          <div className="cal-section">REDE</div>
+          <div className="cal-url">
+            <label>Backend URL</label>
+            <input 
+              type="text" 
+              value={backendUrl} 
+              onChange={e => setBackendUrl(e.target.value)} 
+              placeholder="Ex: http://192.168.1.100:3001"
+            />
+          </div>
 
           <div className="cal-actions">
             <button className="cal-btn-reset" onClick={() => {
