@@ -5,6 +5,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [0.6.3] — 2026-05-24
+
+### Adicionado
+- **Novos vídeos de fundo v17** — Fundo H264 otimizado e composição Cards com alpha Luma (WEBM) adicionados e configurados na projeção.
+
+### Alterado
+- **Booth: Captura instantânea** — O tempo de espera de 3 segundos foi removido. A foto agora é tirada imediatamente quando o sorriso é detectado.
+- **Booth: Envio automático** — A foto é exibida por 3 segundos e enviada automaticamente, caso não seja clicado o botão de "Tentar de Novo". O botão "Enviar" foi removido para simplificar o fluxo.
+- **Projection: Pool de visitantes** — O limite do sorteio de fotos aleatórias aumentou das 10 para as 20 fotos mais recentes, mantendo o limite visual de 10 visitantes exibidos simultaneamente.
+
+### Corrigido
+- **Projection: Bug de inicialização do Warping** — A malha de distorção (keystoning) agora é devidamente carregada e ativada no início da aplicação, sem precisar pressionar "C". A verificação de sincronia de estado foi aprimorada para incluir o status de ativação.
+
+---
+
 ## [0.6.2] — 2026-04-02
 
 ### Corrigido

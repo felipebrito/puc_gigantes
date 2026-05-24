@@ -119,7 +119,7 @@ const DEFAULT_CONFIG = {
   warpRows: 4,
   warpSubdiv: 12,
   enableBgVideo: true,
-  bgVideoUrl: '/videos/v5/8_bg_v16.mp4',
+  bgVideoUrl: '/videos/v17/8_bg_v17.mp4',
   bgVideoOpacity: 1.0,
   lumaMode: 0,
   showDino: false,
@@ -360,6 +360,7 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
     if (cfg.warpOffsets && cfg.warpOffsets.length > 0) {
       const isSame = cfg.warpCols === warp.state.cols &&
         cfg.warpRows === warp.state.rows &&
+        cfg.warpEnabled === warp.state.enabled &&
         JSON.stringify(cfg.warpOffsets) === JSON.stringify(warp.offsetsRef.current);
 
       if (!isSame) {
@@ -374,7 +375,7 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
         if (window.__guiUpdate) window.__guiUpdate(cfg);
       }
     }
-  }, [cfg.warpOffsets, cfg.warpCols, cfg.warpRows, cfg.warpEnabled]);
+  }, [cfg.warpOffsets, cfg.warpCols, cfg.warpRows, cfg.warpEnabled, warp.state.cols, warp.state.rows, warp.state.enabled]);
 
   // Aliases para manter compatibilidade com o resto do código
   const spriteConfig = cfg;
@@ -410,7 +411,7 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
             setHistory(prev => Array.from(new Set([...prev, ...files])));
             // Preload textures so first spawn has no flicker
             files.forEach(url => useTexture.preload(url));
-            setActivePool(files.slice(0, 10));
+            setActivePool(files.slice(-20));
             setApiError(false);
           }
         })
@@ -438,8 +439,8 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
   useEffect(() => {
     const rotatePool = () => {
       if (history.length === 0) return;
-      // Mantém as 10 fotos mais recentes (history preserva ordem de chegada)
-      setActivePool(history.slice(-10));
+      // Mantém as 20 fotos mais recentes (history preserva ordem de chegada)
+      setActivePool(history.slice(-20));
     };
     const interval = setInterval(rotatePool, 15000);
     return () => clearInterval(interval);
@@ -505,10 +506,10 @@ function Scene({ setSourceCanvas, warp, cfg, setCfg }) {
       const url = data.imageUrl;
       useTexture.preload(url); // preload antes de spawnar
       setHistory(h => [...h, url]);
-      // Pool = últimas 10 fotos (mais recente entra, mais antiga sai)
+      // Pool = últimas 20 fotos (mais recente entra, mais antiga sai)
       setActivePool(prev => {
         const updated = Array.from(new Set([...prev, url]));
-        return updated.slice(-10);
+        return updated.slice(-20);
       });
       // Só spawna se a foto ainda não estiver na tela
       if (!visitorsRef.current.some(v => v.imageUrl === url)) {
@@ -697,7 +698,7 @@ export default function App() {
             <Suspense fallback={null}>
               <VideoLayers
                 bgUrl={cfg.bgVideoUrl}
-                fgUrl="/videos/v5/8_FG_alpha.webm"
+                fgUrl="/videos/v17/8_FG_alpha_v17.webm"
                 opacity={cfg.bgVideoOpacity}
               />
             </Suspense>

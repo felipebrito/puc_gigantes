@@ -34,8 +34,8 @@ booth@0.0.0
 
 # Large video assets — exclui tudo, re-inclui apenas os ativos em produção
 projection/public/videos/**
-!projection/public/videos/v5/8_bg_v16.mp4
-!projection/public/videos/v5/8_FG_alpha.webm
+!projection/public/videos/v17/8_bg_v17.mp4
+!projection/public/videos/v17/8_FG_alpha_v17.webm
 
 # Misc
 prompts.txt

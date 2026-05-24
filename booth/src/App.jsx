@@ -23,8 +23,6 @@ function loadCfg(key, fallback) {
 function App() {
   const webcamRef = useRef(null);
   const [imgSrc, setImgSrc]           = useState(null);
-  const [countingDown, setCountingDown] = useState(false);
-  const [countdown, setCountdown]     = useState(3);
   const [flash, setFlash]             = useState(false);
   const [uploading, setUploading]     = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
@@ -48,6 +46,7 @@ function App() {
   const isProcessingRef = useRef(false);
   const uploadingRef    = useRef(false);
   const timerRef        = useRef(null);
+  const sendPhotoRef    = useRef(null);
 
   // Persist settings on change
   React.useEffect(() => { saveCfg('zoom',       zoom);       }, [zoom]);
@@ -77,7 +76,7 @@ function App() {
 
   // Face detection loop
   React.useEffect(() => {
-    if (loadingModels || countingDown || imgSrc) return;
+    if (loadingModels || imgSrc) return;
     const interval = setInterval(async () => {
       if (isCapturingRef.current || isProcessingRef.current || Date.now() < cooldownTimeRef.current) return;
       const video = webcamRef.current?.video;
@@ -112,37 +111,31 @@ function App() {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [loadingModels, countingDown, imgSrc]);
+  }, [loadingModels, imgSrc]);
 
   const startCapture = () => {
     if (isCapturingRef.current || isProcessingRef.current || uploadingRef.current) return;
     isCapturingRef.current = true;
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    setCountingDown(true);
-    setCountdown(3);
-    let localCount = 3;
-    timerRef.current = setInterval(() => {
-      localCount -= 1;
-      setCountdown(localCount);
-      if (localCount <= 0) {
-        clearInterval(timerRef.current); timerRef.current = null;
-        triggerCapture();
-      }
-    }, 1000);
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    triggerCapture();
   };
 
   const triggerCapture = useCallback(() => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     const imageSrc = webcamRef.current.getScreenshot();
     setFlash(true); setTimeout(() => setFlash(false), 200);
     setImgSrc(imageSrc);
-    setCountingDown(false);
     isCapturingRef.current = false;
+
+    // Inicia timer para enviar automaticamente após 3 segundos
+    timerRef.current = setTimeout(() => {
+      if (sendPhotoRef.current) {
+        sendPhotoRef.current(imageSrc);
+      }
+    }, 3000);
   }, [webcamRef]);
 
   const retake = () => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    setCountingDown(false);
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     setImgSrc(null);
     isCapturingRef.current = false;
     cooldownTimeRef.current = Date.now() + 2000;
@@ -166,9 +159,14 @@ function App() {
     };
   };
 
-  const sendPhoto = async () => {
-    if (!imgSrc) return;
-    const raw = imgSrc;
+  React.useEffect(() => {
+    sendPhotoRef.current = sendPhoto;
+  });
+
+  const sendPhoto = async (overrideImgSrc) => {
+    const raw = typeof overrideImgSrc === 'string' ? overrideImgSrc : imgSrc;
+    if (!raw) return;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     setImgSrc(null);
     isCapturingRef.current = false;
     cooldownTimeRef.current = Date.now() + 2000;
@@ -290,26 +288,22 @@ function App() {
       )}
 
       {/* Vignette blur outside oval */}
-      {!imgSrc && !countingDown && <div className="kiosk-vignette" />}
+      {!imgSrc && <div className="kiosk-vignette" />}
 
       {/* Face guide oval */}
-      {!imgSrc && !countingDown && <div className={`face-guide${isFaceValid ? ' valid' : ''}`} />}
+      {!imgSrc && <div className={`face-guide${isFaceValid ? ' valid' : ''}`} />}
 
       {/* Feedback text */}
-      {!imgSrc && !countingDown && (
+      {!imgSrc && (
         <div className="kiosk-feedback" style={{ color: isFaceValid ? '#afff4d' : 'rgba(255,255,255,0.9)' }}>
           {loadingModels ? '⏳ Carregando...' : faceFeedback}
         </div>
       )}
 
-      {/* Countdown */}
-      {countingDown && <div className="kiosk-countdown">{countdown > 0 ? countdown : ''}</div>}
-
       {/* Photo review buttons */}
       {imgSrc && !uploading && (
         <div className="kiosk-review">
           <button className="kiosk-btn secondary" onClick={retake}>🔄 Tentar de Novo</button>
-          <button className="kiosk-btn primary"   onClick={sendPhoto}>✉️ Enviar</button>
         </div>
       )}
 
