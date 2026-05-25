@@ -5,6 +5,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [0.6.4] — 2026-05-25
+
+### Corrigido
+- **Booth: Prevenção de Zoom** — Desabilitado o comportamento padrão de toque do navegador no Booth (pinch-to-zoom e overscroll/bounce), garantindo a estabilidade da interface em tablets.
+
+---
+
 ## [0.6.3] — 2026-05-24
 
 ### Adicionado
