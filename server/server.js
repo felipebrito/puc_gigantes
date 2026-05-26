@@ -172,6 +172,47 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+const PHOTO_RETENTION_MS = 2 * 24 * 60 * 60 * 1000;
+const PHOTO_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const PHOTO_FILE_RE = /^(visitor-|nobg-|test-result).*\.(jpe?g|png|webp)$/i;
+
+function cleanupOldPhotoFiles() {
+  const now = Date.now();
+  const targets = [
+    { dir: uploadDir, match: PHOTO_FILE_RE },
+    { dir: path.join(__dirname, 'public', 'debug'), match: /\.(jpe?g|png|json)$/i },
+  ];
+
+  let deleted = 0;
+  for (const { dir, match } of targets) {
+    if (!fs.existsSync(dir)) continue;
+
+    for (const file of fs.readdirSync(dir)) {
+      if (!match.test(file)) continue;
+      const filePath = path.join(dir, file);
+      let stat;
+      try {
+        stat = fs.statSync(filePath);
+      } catch {
+        continue;
+      }
+      if (!stat.isFile() || now - stat.mtimeMs < PHOTO_RETENTION_MS) continue;
+
+      try {
+        fs.unlinkSync(filePath);
+        deleted++;
+      } catch (e) {
+        console.warn(`[Cleanup] Falha ao apagar ${filePath}: ${e.message}`);
+      }
+    }
+  }
+
+  if (deleted > 0) console.log(`[Cleanup] ${deleted} arquivo(s) de foto com mais de 2 dias apagado(s).`);
+}
+
+cleanupOldPhotoFiles();
+setInterval(cleanupOldPhotoFiles, PHOTO_CLEANUP_INTERVAL_MS);
+
 // Multer Setup for Image Uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {

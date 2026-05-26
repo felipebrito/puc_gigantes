@@ -19,9 +19,12 @@ export function WarpShortcuts({ warp, onCommit, onMoveVertex, onYOffset, showSta
       const { state, setSelectedIdx, setEditing, setEnabled } = warp;
 
       const key = e.key.toLowerCase();
+      const isEditableTarget = e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName);
+      if (isEditableTarget) return;
 
       // F - Fullscreen
       if (key === 'f') {
+        if (e.repeat) return;
         if (!document.fullscreenElement) {
           document.documentElement.requestFullscreen().catch(err => console.error(err));
         } else {
@@ -32,12 +35,14 @@ export function WarpShortcuts({ warp, onCommit, onMoveVertex, onYOffset, showSta
 
       // S - Toggle FPS (Stats)
       if (key === 's') {
+        if (e.repeat) return;
         setShowStats(prev => !prev);
         return;
       }
 
       // M - Toggle GUI (Sumir da tela)
       if (key === 'm') {
+        if (e.repeat) return;
         const gui = window.__gui;
         if (gui) {
           const isHidden = gui.domElement.style.display === 'none';
@@ -56,16 +61,14 @@ export function WarpShortcuts({ warp, onCommit, onMoveVertex, onYOffset, showSta
 
       // C - Toggle Calibragem
       if (key === 'c') {
-        if (!state.enabled) {
-          setEnabled(true);
-          setEditing(true);
-        } else if (state.editing) {
+        if (e.repeat) return;
+        if (state.editing) {
           onCommit();
           setEditing(false);
           setEnabled(true);
         } else {
-          setEditing(false);
-          setEnabled(false);
+          setEnabled(true);
+          setEditing(true);
         }
         return;
       }

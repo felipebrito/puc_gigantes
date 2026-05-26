@@ -7,6 +7,9 @@ import './BoothApp.css';
 
 // Detecta modo pelo query param: /?calibrate
 const IS_CALIBRATE = window.location.search.includes('calibrate');
+const PHOTO_REVIEW_MS = 5000;
+const CAPTURE_COOLDOWN_MS = 2000;
+const CAMERA_START_TIMEOUT_MS = 3500;
 
 // Lê configuração salva
 function loadCfg(key, fallback) {
@@ -30,6 +33,9 @@ function App() {
   const [faceFeedback, setFaceFeedback] = useState('Carregando IA...');
   const [isFaceValid, setIsFaceValid] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [cameraKey, setCameraKey] = useState(0);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState('');
 
   // Configurações de câmera (persistidas por tablet)
   const [zoom,       setZoom]       = useState(() => loadCfg('zoom',       1));
@@ -53,6 +59,7 @@ function App() {
   const uploadingRef    = useRef(false);
   const timerRef        = useRef(null);
   const sendPhotoRef    = useRef(null);
+  const cameraRestartRef = useRef(0);
 
   // Persist settings on change
   React.useEffect(() => { saveCfg('zoom',       zoom);       }, [zoom]);
@@ -81,9 +88,97 @@ function App() {
     })();
   }, []);
 
+  const restartCamera = useCallback((reason = 'unknown') => {
+    const now = Date.now();
+    if (now - cameraRestartRef.current < 2000) return;
+    cameraRestartRef.current = now;
+    console.warn(`[Camera] Reiniciando stream: ${reason}`);
+    setCameraReady(false);
+    setCameraError('');
+    setCameraKey(key => key + 1);
+  }, []);
+
+  const handleUserMedia = useCallback((stream) => {
+    setCameraReady(true);
+    setCameraError('');
+    stream?.getVideoTracks?.().forEach(track => {
+      track.onended = () => restartCamera('track ended');
+      track.onmute = () => setTimeout(() => restartCamera('track muted'), 1000);
+    });
+  }, [restartCamera]);
+
+  const handleUserMediaError = useCallback((error) => {
+    const message = error?.message || error?.name || 'Erro ao abrir câmera';
+    console.error('[Camera]', message);
+    setCameraReady(false);
+    setCameraError(message);
+    setTimeout(() => restartCamera('user media error'), 1500);
+  }, [restartCamera]);
+
+  React.useEffect(() => {
+    if (imgSrc) return;
+
+    const timer = setTimeout(() => {
+      const video = webcamRef.current?.video;
+      const hasFrame = video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0;
+      if (!hasFrame) restartCamera('sem frame inicial');
+    }, CAMERA_START_TIMEOUT_MS);
+
+    return () => clearTimeout(timer);
+  }, [cameraKey, imgSrc, restartCamera]);
+
+  React.useEffect(() => {
+    const resumeCamera = () => {
+      if (document.visibilityState === 'visible') restartCamera('app visivel');
+    };
+    document.addEventListener('visibilitychange', resumeCamera);
+    window.addEventListener('pageshow', resumeCamera);
+    window.addEventListener('focus', resumeCamera);
+    return () => {
+      document.removeEventListener('visibilitychange', resumeCamera);
+      window.removeEventListener('pageshow', resumeCamera);
+      window.removeEventListener('focus', resumeCamera);
+    };
+  }, [restartCamera]);
+
+  const triggerCapture = useCallback(() => {
+    const video = webcamRef.current?.video;
+    const hasFrame = video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0;
+    if (!hasFrame) {
+      isCapturingRef.current = false;
+      restartCamera('captura sem frame');
+      return;
+    }
+
+    const imageSrc = webcamRef.current.getScreenshot();
+    if (!imageSrc) {
+      isCapturingRef.current = false;
+      restartCamera('screenshot vazio');
+      return;
+    }
+
+    setFlash(true); setTimeout(() => setFlash(false), 200);
+    setImgSrc(imageSrc);
+    isCapturingRef.current = false;
+
+    // Inicia timer para enviar automaticamente após o tempo de revisão
+    timerRef.current = setTimeout(() => {
+      if (sendPhotoRef.current) {
+        sendPhotoRef.current(imageSrc);
+      }
+    }, PHOTO_REVIEW_MS);
+  }, [restartCamera]);
+
+  const startCapture = useCallback(() => {
+    if (isCapturingRef.current || isProcessingRef.current || uploadingRef.current) return;
+    isCapturingRef.current = true;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    triggerCapture();
+  }, [triggerCapture]);
+
   // Face detection loop
   React.useEffect(() => {
-    if (loadingModels || imgSrc) return;
+    if (loadingModels || imgSrc || !cameraReady) return;
     const interval = setInterval(async () => {
       if (isCapturingRef.current || isProcessingRef.current || Date.now() < cooldownTimeRef.current) return;
       const video = webcamRef.current?.video;
@@ -118,34 +213,13 @@ function App() {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [loadingModels, imgSrc]);
-
-  const startCapture = () => {
-    if (isCapturingRef.current || isProcessingRef.current || uploadingRef.current) return;
-    isCapturingRef.current = true;
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    triggerCapture();
-  };
-
-  const triggerCapture = useCallback(() => {
-    const imageSrc = webcamRef.current.getScreenshot();
-    setFlash(true); setTimeout(() => setFlash(false), 200);
-    setImgSrc(imageSrc);
-    isCapturingRef.current = false;
-
-    // Inicia timer para enviar automaticamente após 3 segundos
-    timerRef.current = setTimeout(() => {
-      if (sendPhotoRef.current) {
-        sendPhotoRef.current(imageSrc);
-      }
-    }, 3000);
-  }, [webcamRef]);
+  }, [loadingModels, imgSrc, cameraReady, startCapture]);
 
   const retake = () => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     setImgSrc(null);
     isCapturingRef.current = false;
-    cooldownTimeRef.current = Date.now() + 2000;
+    cooldownTimeRef.current = Date.now() + CAPTURE_COOLDOWN_MS;
   };
 
   const detectFaceBox = async () => {
@@ -176,7 +250,7 @@ function App() {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     setImgSrc(null);
     isCapturingRef.current = false;
-    cooldownTimeRef.current = Date.now() + 2000;
+    cooldownTimeRef.current = Date.now() + CAPTURE_COOLDOWN_MS;
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
     (async () => {
@@ -221,16 +295,19 @@ function App() {
         {/* Left: live camera preview */}
         <div className="calibrate-camera">
           <Webcam
+            key={`calibrate-${cameraKey}`}
             audio={false}
             ref={webcamRef}
             screenshotFormat="image/jpeg"
             className="webcam"
             style={{ transform: cameraTransform, filter: cameraFilter }}
+            onUserMedia={handleUserMedia}
+            onUserMediaError={handleUserMediaError}
             videoConstraints={{ width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }}
           />
           <div className="face-guide" />
           <div className="overlay-instruction" style={{ color: isFaceValid ? '#afff4d' : 'white' }}>
-            {loadingModels ? 'Carregando IA...' : faceFeedback}
+            {!cameraReady ? (cameraError ? 'Erro na câmera. Tentando reconectar...' : 'Abrindo câmera...') : loadingModels ? 'Carregando IA...' : faceFeedback}
           </div>
         </div>
 
@@ -283,6 +360,7 @@ function App() {
 
       {/* Camera — fullscreen */}
       <Webcam
+        key={`kiosk-${cameraKey}`}
         audio={false}
         ref={webcamRef}
         screenshotFormat="image/jpeg"
@@ -292,6 +370,8 @@ function App() {
           transform: cameraTransform,
           filter: cameraFilter,
         }}
+        onUserMedia={handleUserMedia}
+        onUserMediaError={handleUserMediaError}
         videoConstraints={{ width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }}
       />
 
@@ -314,7 +394,7 @@ function App() {
       {/* Feedback text */}
       {!imgSrc && (
         <div className="kiosk-feedback" style={{ color: isFaceValid ? '#afff4d' : 'rgba(255,255,255,0.9)' }}>
-          {loadingModels ? '⏳ Carregando...' : faceFeedback}
+          {!cameraReady ? (cameraError ? 'Reconectando câmera...' : 'Abrindo câmera...') : loadingModels ? '⏳ Carregando...' : faceFeedback}
         </div>
       )}
 
