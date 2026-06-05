@@ -184,14 +184,16 @@ function App() {
       const video = webcamRef.current?.video;
       if (!video || video.readyState !== 4) return;
 
-      let detection;
+      let detections;
       try {
         const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 });
-        detection = await faceapi.detectSingleFace(video, opts).withFaceExpressions();
+        detections = await faceapi.detectAllFaces(video, opts).withFaceExpressions();
       } catch { return; }
 
-      if (!detection) { setFaceFeedback('Rosto não encontrado'); setIsFaceValid(false); return; }
+      if (!detections || detections.length === 0) { setFaceFeedback('Rosto não encontrado'); setIsFaceValid(false); return; }
+      if (detections.length > 1) { setFaceFeedback('Apenas 1 pessoa por foto'); setIsFaceValid(false); return; }
 
+      const detection = detections[0];
       const box = detection.box || detection.detection?.box;
       if (!box) return;
 
