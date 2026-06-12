@@ -114,6 +114,33 @@ body {
   animation: feedback-pulse 2s ease-in-out infinite;
 }
 
+.kiosk-restart {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  z-index: 25;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 50%;
+  background: rgba(0,0,0,0.45);
+  color: rgba(255,255,255,0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.kiosk-restart-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.kiosk-restart:active {
+  transform: scale(0.98);
+}
+
 @keyframes feedback-pulse {
   0%, 100% { transform: translateX(-50%) scale(1); }
   50%       { transform: translateX(-50%) scale(1.03); }
@@ -361,6 +388,7 @@ body {
 
 .cal-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.8rem;
   margin-top: auto;
   padding-top: 1rem;

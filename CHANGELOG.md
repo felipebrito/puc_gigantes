@@ -5,6 +5,20 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
 ---
 
+## [0.6.5] — 2026-06-12
+
+### Alterado
+- **Booth: botão de refresh simplificado** — o fallback manual da câmera no modo kiosk foi reduzido para um ícone discreto no canto da tela, sem texto.
+
+### Corrigido
+- **Booth: loop infinito após negação de permissão** — erros como `Permission denied` e `NotAllowedError` agora são tratados como bloqueio de permissão, interrompendo tentativas automáticas de reconexão.
+- **Booth: estabilidade de reabertura da câmera** — a aplicação agora encerra o `MediaStream` anterior antes de reinicializar a webcam, evitando estados presos ao reabrir o vídeo.
+- **Booth: congelamento silencioso da câmera** — adicionada detecção de stall por avanço de frames (`video.currentTime`) para reiniciar automaticamente streams travados sem erro explícito.
+- **Booth: sobrecarga no reconhecimento facial** — o loop de `face-api.js` agora impede execuções sobrepostas, reduzindo travamentos e pressão de CPU em tablets.
+- **Booth: comportamento inconsistente em desenvolvimento** — removido `StrictMode` do bootstrap para evitar dupla montagem do componente de câmera e conflitos no fluxo de permissão.
+
+---
+
 ## [0.6.4] — 2026-05-25
 
 ### Corrigido

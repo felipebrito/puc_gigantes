@@ -10,6 +10,22 @@ const IS_CALIBRATE = window.location.search.includes('calibrate');
 const PHOTO_REVIEW_MS = 5000;
 const CAPTURE_COOLDOWN_MS = 2000;
 const CAMERA_START_TIMEOUT_MS = 3500;
+const CAMERA_RESTART_COOLDOWN_MS = 2000;
+const CAMERA_STALL_TIMEOUT_MS = 4000;
+const DETECTION_INTERVAL_MS = 700;
+
+function isPermissionError(error) {
+  const name = error?.name || '';
+  const message = (error?.message || '').toLowerCase();
+  return (
+    name === 'NotAllowedError' ||
+    name === 'PermissionDeniedError' ||
+    name === 'SecurityError' ||
+    message.includes('permission denied') ||
+    message.includes('permission dismissed') ||
+    message.includes('notallowederror')
+  );
+}
 
 // Lê configuração salva
 function loadCfg(key, fallback) {
@@ -60,6 +76,10 @@ function App() {
   const timerRef        = useRef(null);
   const sendPhotoRef    = useRef(null);
   const cameraRestartRef = useRef(0);
+  const detectionInFlightRef = useRef(false);
+  const lastVideoTimeRef = useRef({ time: -1, updatedAt: 0 });
+  const streamRef = useRef(null);
+  const permissionBlockedRef = useRef(false);
 
   // Persist settings on change
   React.useEffect(() => { saveCfg('zoom',       zoom);       }, [zoom]);
@@ -88,35 +108,59 @@ function App() {
     })();
   }, []);
 
+  const stopStream = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    stream.getTracks?.().forEach(track => {
+      track.onended = null;
+      track.onmute = null;
+      track.stop();
+    });
+    streamRef.current = null;
+  }, []);
+
   const restartCamera = useCallback((reason = 'unknown') => {
+    if (permissionBlockedRef.current && !reason.startsWith('manual')) return;
     const now = Date.now();
-    if (now - cameraRestartRef.current < 2000) return;
+    if (now - cameraRestartRef.current < CAMERA_RESTART_COOLDOWN_MS) return;
     cameraRestartRef.current = now;
     console.warn(`[Camera] Reiniciando stream: ${reason}`);
+    stopStream();
+    detectionInFlightRef.current = false;
+    lastVideoTimeRef.current = { time: -1, updatedAt: 0 };
     setCameraReady(false);
     setCameraError('');
     setCameraKey(key => key + 1);
-  }, []);
+  }, [stopStream]);
 
   const handleUserMedia = useCallback((stream) => {
+    stopStream();
+    streamRef.current = stream;
+    permissionBlockedRef.current = false;
+    lastVideoTimeRef.current = { time: -1, updatedAt: Date.now() };
     setCameraReady(true);
     setCameraError('');
     stream?.getVideoTracks?.().forEach(track => {
       track.onended = () => restartCamera('track ended');
       track.onmute = () => setTimeout(() => restartCamera('track muted'), 1000);
     });
-  }, [restartCamera]);
+  }, [restartCamera, stopStream]);
 
   const handleUserMediaError = useCallback((error) => {
     const message = error?.message || error?.name || 'Erro ao abrir câmera';
     console.error('[Camera]', message);
+    const permissionDenied = isPermissionError(error);
+    permissionBlockedRef.current = permissionDenied;
     setCameraReady(false);
     setCameraError(message);
-    setTimeout(() => restartCamera('user media error'), 1500);
+    if (!permissionDenied) {
+      setTimeout(() => restartCamera('user media error'), 1500);
+    }
   }, [restartCamera]);
 
   React.useEffect(() => {
     if (imgSrc) return;
+    if (permissionBlockedRef.current) return;
 
     const timer = setTimeout(() => {
       const video = webcamRef.current?.video;
@@ -127,8 +171,11 @@ function App() {
     return () => clearTimeout(timer);
   }, [cameraKey, imgSrc, restartCamera]);
 
+  React.useEffect(() => () => stopStream(), [stopStream]);
+
   React.useEffect(() => {
     const resumeCamera = () => {
+      if (permissionBlockedRef.current) return;
       if (document.visibilityState === 'visible') restartCamera('app visivel');
     };
     document.addEventListener('visibilitychange', resumeCamera);
@@ -180,15 +227,35 @@ function App() {
   React.useEffect(() => {
     if (loadingModels || imgSrc || !cameraReady) return;
     const interval = setInterval(async () => {
-      if (isCapturingRef.current || isProcessingRef.current || Date.now() < cooldownTimeRef.current) return;
       const video = webcamRef.current?.video;
-      if (!video || video.readyState !== 4) return;
+      if (!video) return;
+
+      const now = Date.now();
+      if (video.readyState >= 2 && video.currentTime !== lastVideoTimeRef.current.time) {
+        lastVideoTimeRef.current = { time: video.currentTime, updatedAt: now };
+      } else if (video.readyState >= 2 && now - lastVideoTimeRef.current.updatedAt > CAMERA_STALL_TIMEOUT_MS) {
+        restartCamera('video stall detectado');
+        return;
+      }
+
+      if (
+        isCapturingRef.current ||
+        isProcessingRef.current ||
+        detectionInFlightRef.current ||
+        now < cooldownTimeRef.current ||
+        video.readyState !== 4
+      ) return;
 
       let detections;
       try {
+        detectionInFlightRef.current = true;
         const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 });
         detections = await faceapi.detectAllFaces(video, opts).withFaceExpressions();
-      } catch { return; }
+      } catch {
+        return;
+      } finally {
+        detectionInFlightRef.current = false;
+      }
 
       if (!detections || detections.length === 0) { setFaceFeedback('Rosto não encontrado'); setIsFaceValid(false); return; }
       if (detections.length > 1) { setFaceFeedback('Apenas 1 pessoa por foto'); setIsFaceValid(false); return; }
@@ -213,9 +280,9 @@ function App() {
           startCapture();
         }
       }
-    }, 1000);
+    }, DETECTION_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [loadingModels, imgSrc, cameraReady, startCapture]);
+  }, [loadingModels, imgSrc, cameraReady, restartCamera, startCapture]);
 
   const retake = () => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
@@ -309,7 +376,11 @@ function App() {
           />
           <div className="face-guide" />
           <div className="overlay-instruction" style={{ color: isFaceValid ? '#afff4d' : 'white' }}>
-            {!cameraReady ? (cameraError ? 'Erro na câmera. Tentando reconectar...' : 'Abrindo câmera...') : loadingModels ? 'Carregando IA...' : faceFeedback}
+            {!cameraReady
+              ? (permissionBlockedRef.current
+                ? 'Permita acesso a camera no navegador'
+                : (cameraError ? 'Erro na câmera. Tentando reconectar...' : 'Abrindo câmera...'))
+              : loadingModels ? 'Carregando IA...' : faceFeedback}
           </div>
         </div>
 
@@ -396,8 +467,27 @@ function App() {
       {/* Feedback text */}
       {!imgSrc && (
         <div className="kiosk-feedback" style={{ color: isFaceValid ? '#afff4d' : 'rgba(255,255,255,0.9)' }}>
-          {!cameraReady ? (cameraError ? 'Reconectando câmera...' : 'Abrindo câmera...') : loadingModels ? '⏳ Carregando...' : faceFeedback}
+          {!cameraReady
+            ? (permissionBlockedRef.current
+              ? 'Permita acesso a camera'
+              : (cameraError ? 'Reconectando câmera...' : 'Abrindo câmera...'))
+            : loadingModels ? '⏳ Carregando...' : faceFeedback}
         </div>
+      )}
+
+      {!imgSrc && (
+        <button
+          type="button"
+          className="kiosk-restart"
+          aria-label="Atualizar camera"
+          onClick={(event) => {
+            event.stopPropagation();
+            permissionBlockedRef.current = false;
+            restartCamera('manual kiosk');
+          }}
+        >
+          <span aria-hidden="true" className="kiosk-restart-icon">↻</span>
+        </button>
       )}
 
       {/* Photo review buttons */}
